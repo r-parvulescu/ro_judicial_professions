@@ -20,34 +20,34 @@ from collect import table_helpers
 # TODO make it work from just memory so you don't have to unzip anything
 
 
-def make_pp_table(profession):
+def make_pp_table(directories, out_path, profession):
     """
     Go through employment rolls, extract person-period data, put it into a table, and save as csv.
+
+    :param directories: list of directories where the base data files live
+    :param out_path: path where we want the person-period table(s) to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return None
     """
-    # get the directories where the base data files live, and the root of the path where the out-csv will go
-    directories, out_path = get_paths(profession)
 
     # initialise a dict of person-period tables, according to the time-grain of the table
     # (i.e. person-year vs person-month)
     ppts = {'year': ([], '_year.csv'), 'month': ([], '_month.csv')}
     counter = 0
-
     for d in directories:
         # if int(re.search(r'([1-2][0-9]{3})', d).group(1)) < 2005:  # to use only pre-2005 data
-        for subdir, dirs, files in os.walk(d):
+        for root, subdirs, files in os.walk(d):
             for file in files:
                 counter += 1
                 if counter < 100000:
-                    file_path = subdir + os.sep + file
+                    file_path = root + os.sep + file
                     print(file_path)
                     print(counter)
                     people_periods_dict = triage(file_path, profession)
                     [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
     # write to csv
-    head = ["nume", "prenume", "instanță/parchet", "an", "lună"]
+    head = get_header(profession)
     for k, v in ppts.items():
         if v[0]:
             unique_row_table = table_helpers.deduplicate_list_of_lists(v[0])
@@ -58,26 +58,18 @@ def make_pp_table(profession):
                     writer.writerow(row)
 
 
-def get_paths(profession):
+def get_header(profession):
     """
-    Return paths for directories where the in-files live, and partial path where the out-file should go.
+    Different professions have different information, so the headers need to change accordingly.
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: tuple, ([list of directories], partial path)
+    :return: header, as list
     """
-    in_directories, outfile_path = [], ''
-    if profession == 'judges':
-        in_directories = ['collector/converter/input/judges_12.2005-04.2020',
-                          'collector/converter/input/judges_1988-2005']
-        outfile_path = 'collector/converter/output/judges/judges'
-    if profession == 'prosecutors':
-        in_directories = ['collector/converter/input/prosecutors_12.2005-12.2019',
-                          'collector/converter/input/prosecutors_1988-2005']
-        outfile_path = 'collector/converter/output/prosecutors/prosecutors'
 
-    if in_directories and outfile_path:
-        return in_directories, outfile_path
-    else:
-        print('NO INPUT PROVIDED')
+    headers = {'judges': ["nume", "prenume", "instanță/parchet", "an", "lună"],
+               'prosecutors': ["nume", "prenume", "instanță/parchet", "an", "lună"],
+               'executori': ["nume", "prenume", "sediul", "an", "camera", 'localitatea', 'stagiu', 'altele']}
+
+    return headers[profession]
 
 
 def triage(in_file_path, profession):
@@ -104,6 +96,9 @@ def triage(in_file_path, profession):
     if in_file_path[-4:] == 'xlsx':
         people_periods_dict = get_xlsx_people_periods(in_file_path, profession)
         [pps[k].extend(v) for k, v in people_periods_dict.items() if v]
+
+    if in_file_path[-3:] == 'csv':
+        pps['year'].extend(get_csv_people_periods(in_file_path))
 
     if in_file_path[-3:] == 'pdf':
         year, month = get_year_month(in_file_path)
@@ -180,6 +175,36 @@ def xlsx_df_cleaners(df):
     df = df.applymap(lambda s: s.replace('-', ' ') if type(s) == str else s)  # remove hyphens
     df = df.replace(np.nan, '', regex=True)  # swap nan's for empty string
     return df
+
+
+def get_csv_people_periods(in_file_path):
+    """
+    Extract person-years from a csv-file, run data through cleaners, and return list of person-years.
+
+    NB: as of 22/02/2020, only data for profession "executori judecătoreşti" are in csv format.
+
+    :param in_file_path: string, path to the file holding employment information
+    :return: a person-period table, as a list of lists
+    """
+    # initialise list of person-years
+    person_years = []
+
+    # read in the base data
+    with open(in_file_path, 'r') as in_file:
+        header = ["nume", "prenume", "sediu", "an", "camera", "localitate", "stagiu", "altele"]
+        reader = csv.DictReader(in_file, fieldnames=header)
+
+        # clean the rows we already have and dump the clean versions in a new table
+        for row in reader:
+            clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
+                                                               row['camera'], row['localitate'])
+            new_row = list(clean_names[:2]) + [row['sediu'].upper()] + [row['an']] + \
+                      list(clean_names[2:]) + [row['stagiu'].upper()] + [row['altele'].upper()]
+
+            person_years.append(new_row)
+
+    # return the cleaned person-years
+    return person_years
 
 
 def get_pdf_people_periods(in_file_path, year, month):
