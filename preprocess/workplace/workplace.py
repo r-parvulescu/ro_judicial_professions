@@ -5,9 +5,15 @@ Function for  assigning the a unit-code to a person-period given the full name o
 import json
 
 
-def set_unitcode_level(unit_name, unit_codes):
-    """given a unit name return its code and hierarchical level"""
-    code = unit_codes[unit_name.strip()]
+def get_workplace_profile(workplace, workplace_codes):
+    """
+    Return the organisational code and level of each workplace.
+
+    :param workplace: str, the full name of the workplace
+    :param workplace_codes: the codes that locates each workplace within its organisational hierarchy
+    :return a list of the workplace code and the level (e.g. Low Court has level 1, High Court has Level 4)
+    """
+    code = workplace_codes[workplace.strip()]
     level = get_unit_level(code)
     return code + [level]
 
