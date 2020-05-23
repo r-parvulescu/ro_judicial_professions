@@ -54,31 +54,35 @@ def make_gender_dict(csv_person_period_table):
     :return: None
 
     """
-    with open(csv_person_period_table, 'r') as f, open('prep/gender/ro_gender_dict.txt', 'r') as in_gd, \
-            open('prep/gender/ro_gender_dict_updated.txt', 'w') as out_gd:
-        gender_dict = json.load(in_gd)
-        # go through files, building gender dict
+
+    # laod the existing gender dict
+    gender_dict = get_gender_dict()
+
+    # go through files, building gender dict
+    with open(csv_person_period_table, 'r') as f:
+
         reader = csv.reader(f)
         next(reader, None)  # skip head
+
         for row in reader:
             given_names = row[1].split(' ')
             for name in given_names:
                 if name not in gender_dict:  # prompt to assign name
                     print(row)
-                    print(row[0], row[1])
                     print(name)
                     answer = input("What gender is this name? f,m,dk, surname ")
                     if not ((answer == 'f') or (answer == 'm') or (answer == 'dk') or (answer == 'surname')):
                         answer = input("Incorrect format, please, what gender is this name? f,m,dk ")
                     gender_dict[name] = answer
+
+    # write new dict to file
+    with open('preprocess/gender/ro_gender_dict_updated.txt', 'w') as out_gd:
         # dump the dict
         json.dump(gender_dict, out_gd)
 
-        # TODO sometimes this doesn't write out an updated dict, just the old one -- see what's up
-
 
 def get_gender_dict():
-    with open('prep/gender/ro_gender_dict.txt', 'r') as gd:
+    with open('preprocess/gender/ro_gender_dict.txt', 'r') as gd:
         return json.load(gd)
 
 
