@@ -67,6 +67,8 @@ def preprocess(in_directory, out_path, std_log_path, pids_log_path, profession):
     # write the preprocessed table to disk
     with open(out_path, 'w') as out_file:
         writer = csv.writer(out_file)
+        # put in the header
+        writer.writerow(get_header(profession))
         [writer.writerow(row) for row in ppts['year'][0]]
 
 
@@ -111,3 +113,20 @@ def add_workplace_profile(person_period_table, profession):
         ppt_with_wp.append(row + workplace.get_workplace_profile(row[2], workplace_codes_dict))  # workplace = row[2]
 
     return ppt_with_wp
+
+
+def get_header(profession):
+    """
+    Different professions have different information, so the headers need to change accordingly.
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: header, as list
+    """
+
+    headers = {'judges': ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
+                          "ca cod", "trib cod", "jud cod", "nivel"],
+               'prosecutors': ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
+                               "ca cod", "trib cod", "jud cod", "nivel"],
+               'executori': ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an",
+                             "camera", 'localitatea', 'stagiu', 'altele']}
+
+    return headers[profession]
