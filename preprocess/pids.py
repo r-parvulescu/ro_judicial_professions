@@ -8,13 +8,14 @@ import pandas as pd
 import copy
 
 
-def pids(person_year_table, profession):
+def pids(person_year_table, profession, pids_log_path):
     """
     Takes a table of person years, cleans it to make sure nobody is in two or more places at once, interpolates missing
     person-years, assigns each person-year a unique person-level ID, and returns the updated table.
 
     :param person_year_table: a table of person-years as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :param pids_log_path: path where the logs from pids will live
     :return: a person-year table without overlaps, with interpolated person-years, and with unique person IDs
     """
 
@@ -24,7 +25,7 @@ def pids(person_year_table, profession):
     # remove overlaps so no person is in 2+ places in one year
     print("     NUMBER OF PERSON-YEARS GOING IN: ", len(person_year_table))
     change_log.append(["NUMBER OF PERSON-YEARS GOING INTO CORRECT_OVERLAPS: ", len(person_year_table)])
-    distinct_persons = correct_overlaps(person_year_table, profession, change_log)
+    distinct_persons = correct_overlaps(person_year_table, profession, change_log, pids_log_path)
 
     # print and save some diagnostics
     print("INTERPOLATE PERSON YEARS")
@@ -36,17 +37,16 @@ def pids(person_year_table, profession):
     person_year_table_with_pids = unique_person_ids(distinct_persons, change_log)
 
     # write to disk the change log
-    output_root_path = 'prep/pids/' + profession + '/' + profession
     change_log = pd.DataFrame(change_log)
-    change_log_path = output_root_path + '_change_log.csv'
-    change_log.to_csv(change_log_path)
+    change_log_out_path = pids_log_path + profession + '_pids_change_log.csv'
+    change_log.to_csv(change_log_out_path)
 
     # and return the person-year table without overlaps, with interpolated values, and with person-level IDs,
     # sorted by surname, given name, and year
     return person_year_table_with_pids
 
 
-def correct_overlaps(person_year_table, profession, change_log):
+def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
     """
     NB: !! this code only applies to person-year tables !! DO NOT APPLY TO PERSON MONTH TABLES
 
@@ -132,6 +132,7 @@ def correct_overlaps(person_year_table, profession, change_log):
     :param person_year_table: a table of person-years, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :param change_log: a list (to be written as a csv) marking the before and after states of the person-sequence
+    :param pids_log_path: path where the logs from pids will live
     :return: a list of distinct persons, i.e. of person-sequences that feature no overlaps; this is a triple nested
              list: of person-sequences, which is made up of person-years, each of which is a list of person-year data
     """
@@ -185,7 +186,7 @@ def correct_overlaps(person_year_table, profession, change_log):
                 # CASE (G)
                 # if the overlap is of 3+ years, split up the person-year
                 if len(ps) - len(years_and_workplaces) > 2:
-                    sequences_split = split_sequences(ps, change_log, odd_person_sequences)
+                    sequences_split = split_sequences(profession, ps, change_log, odd_person_sequences)
                     if sequences_split:
                         distinct_persons.extend(sequences_split)
                     continue
@@ -311,10 +312,9 @@ def correct_overlaps(person_year_table, profession, change_log):
             distinct_persons.append(ps)
 
     # write to disk the table of odd sequences and the change logs
-    output_root_path = 'prep/pids/' + profession + '/' + profession
 
     odd_seqs = pd.DataFrame(odd_person_sequences)
-    odd_seqs_path = output_root_path + '_odd_person_sequences.csv'
+    odd_seqs_path = pids_log_path + profession + '_pids_odd_person_sequences.csv'
     odd_seqs.to_csv(odd_seqs_path)
 
     # print and save some general diagnostics
@@ -333,6 +333,9 @@ def correct_overlaps(person_year_table, profession, change_log):
 
     # and return the list of distinct persons
     return distinct_persons
+
+
+# TODO the overlap corrector catches but does not eliminate overlaps for executori -- see why
 
 
 def if_transition(years_and_workplaces, overlap_years):
@@ -373,7 +376,7 @@ def if_transition(years_and_workplaces, overlap_years):
         return {'transition': False, 'workplace_before': years_and_workplaces[year_before][0]}
 
 
-def split_sequences(person_sequence, change_log, odd_person_sequences):
+def split_sequences(profession, person_sequence, change_log, odd_person_sequences):
     """
 
     NB: BUILT ONLY FOR SEQUENCES THAT FEATURE ONLY ONE NAME IN 2 PLACES, WILL NOT WORK FOR ONE NAME IN 3+ PLACES
@@ -409,14 +412,22 @@ def split_sequences(person_sequence, change_log, odd_person_sequences):
     DERP       BOB JOE     ALPHA          2013  1           DERP        BOB JOE     BETA           2013  2
     DERP       BOB JOE     ALPHA          2014  1           DERP        BOB JOE     BETA           2014  2
 
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param person_sequence: a year-ordered sequence of person-years sharing a full name; as a list of lists
     :param change_log: a list (to be written as a csv) marking the before and after states of the person-sequence
     :param odd_person_sequences: a list of persons with odd characteristics, which we save for visual inspection
     :return: a list of person-sequences; in the example above, a list with [B, C]
     """
 
-    # sort by appellate court area, tribunal court area, then court name
-    person_sequence.sort(key=operator.itemgetter(6, 7, 8))
+    # different professions are organised differently, so the grouping changes
+
+    if profession == 'judges' or profession == 'prosecutors':
+        # sort by appellate court area, tribunal court area, then court name
+        person_sequence.sort(key=operator.itemgetter(6, 7, 8))
+
+    else:  # profession is 'executori' or 'notaries'
+        # sort by regional chamber and town
+        person_sequence.sort(key=operator.itemgetter(6, 7))
 
     # group by appellate area
     # value at index 6 holds appellate court area code
@@ -427,10 +438,11 @@ def split_sequences(person_sequence, change_log, odd_person_sequences):
     if len(p_seqs) != 2:
         p_seqs = [group for k, [*group] in itertools.groupby(person_sequence, key=operator.itemgetter(7))]
 
-    # if you don't get two groups, group by local court
-    # value at index 8 holds local court code
-    if len(p_seqs) != 2:
-        p_seqs = [group for k, [*group] in itertools.groupby(person_sequence, key=operator.itemgetter(8))]
+    if profession == 'judges' or profession == 'prosecutors':
+        # if you don't get two groups, group by local court
+        # value at index 8 holds local court code
+        if len(p_seqs) != 2:
+            p_seqs = [group for k, [*group] in itertools.groupby(person_sequence, key=operator.itemgetter(8))]
 
     # if you still don't get two groups do nothing, and save the person-sequence for visual inspection
     if len(p_seqs) != 2:

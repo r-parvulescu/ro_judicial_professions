@@ -198,7 +198,11 @@ def get_csv_people_periods(in_file_path):
         for row in reader:
             clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
                                                                row['camera'], row['localitate'])
-            new_row = list(clean_names[:2]) + [row['sediu'].upper()] + [row['an']] + \
+
+            # if there's no info for the workplace, give it the '-88'
+            workplace = row['sediu'].upper() if row['sediu'] else '-88'
+
+            new_row = list(clean_names[:2]) + [workplace] + [row['an']] + \
                       list(clean_names[2:]) + [row['stagiu'].upper()] + [row['altele'].upper()]
 
             person_years.append(new_row)

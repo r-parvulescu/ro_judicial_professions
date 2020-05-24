@@ -78,7 +78,11 @@ given_name_mistakes_transdict = {
     "MARIEANA": "MARIANA", "PANTELEMON": "PANTELIMON", "OLIMPIEA": "OLIMPIA",
     "VERGICICA": 'VERGINICA', "PARASCHIEVA": "PARASCHEVA", "NCOLAE": "NICOLAE", "TITIANA": "TATIANA",
     "EUJEN": "EUGEN", "VIORIVA": 'VIORICA', "EMANELA": "EMANUELA", "VASIICĂ": "VASILICĂ",
-    "DUMMITRU": "DUMITRU", "EMANUEAL": "EMANUEL", "VASILII": 'VASILI'
+    "DUMMITRU": "DUMITRU", "EMANUEAL": "EMANUEL", "VASILII": 'VASILI', "RALUCAMARIANA": "RALUCA MARIANA",
+    "DUMIRTU": "DUMITRU", "LOSIF": "IOSIF", "DURNITRU": "DUMITRU", "ISVAN": "ISTVAN", "LULIAN": "IULIAN",
+    "GHEROGE": "GHEORGHE", "IOSN": "IOAN", "CIRPIAN": "CIPRIAN", "LONEL": "IONEL",
+    "BAGDAN": "BOGDAN", "GABRIELVALENTIN": "GABRIEL VALENTIN", "FLORINEI": "FLORINEL", "GRIELA": "GABRIELA",
+    "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN"
 }
 
 given_name_diacritics_transdict = {
@@ -109,7 +113,7 @@ given_name_diacritics_transdict = {
     "RAZVAN": "RĂZVAN", "STANCESCU": "STĂNCESCU", "ENIKO": "ENIKŐ", "MANDICA": "MANDICĂ",
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
-    "SADÎC": 'SADÂC'
+    "SADÎC": 'SADÂC', "JENO": "JENŐ", "GABOR": "GÁBOR"
 }
 
 
@@ -750,7 +754,7 @@ prosec_surname_transdict = {
 
 # HELPERS FOR EXECUTORI JUDECĂTOREŞTI
 
-def executori_name_cleaner(surnames, given_names, town, chamber):
+def executori_name_cleaner(surnames, given_names, chamber, town):
     """
     Apply standard cleaners to the surnames and given names of judicial debt collectors.
 
@@ -763,7 +767,10 @@ def executori_name_cleaner(surnames, given_names, town, chamber):
     """
 
     surnames, given_names, town, chamber = exec_str_cln(surnames), exec_str_cln(given_names), \
-                                           exec_str_cln(town), exec_str_cln(chamber)
+                                           exec_str_cln(chamber), exec_str_cln(town)
+
+    # remove a maiden name marker from the surnames
+    surnames = surnames.replace("FOSTA", ' ').replace("FOSTĂ", ' ')
 
     # run given names through the translation dictionaries
     given_names = space_name_replacer(given_names, given_name_mistakes_transdict)
@@ -774,7 +781,7 @@ def executori_name_cleaner(surnames, given_names, town, chamber):
 
     # return, removing outside spaces and reducing multiple spaces to one
     return ' '.join(surnames.split()).strip(), ' '.join(given_names.split()).strip(), \
-           ' '.join(town.split()).strip(), ' '.join(chamber.split()).strip()
+           ' '.join(chamber.split()).strip(), ' '.join(town.split()).strip()
 
 
 def exec_str_cln(text):
@@ -796,4 +803,5 @@ def exec_str_cln(text):
     return ' '.join(text.split()).strip()
 
 
-executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA"}
+executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
+                               "SFÂNTU": "SFÂNTU GHEORGHE"}

@@ -18,7 +18,11 @@ def deduplicate_list_of_lists(list_of_lists):
     :param list_of_lists: what it sounds list
     :return list of lists without duplicate rows (i.e. inner lists)
     """
-    uniques = {'|'.join(row[:3] + [str(row[3])]) for row in list_of_lists}
+    uniques = set()
+    for row in list_of_lists:
+        # much quicker if we compare strings
+        str_row = [str(entry) for entry in row]
+        uniques.add('|'.join(str_row))
     return [row.split('|') for row in uniques]
 
 

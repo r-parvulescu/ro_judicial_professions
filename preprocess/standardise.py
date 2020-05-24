@@ -55,10 +55,10 @@ def clean(ppt, change_dict, range_years, year, profession):
     ppt = name_order(ppt)
 
     print('      RUNNING: LENGTHEN SURNAME')
-    ppt = lengthen_name(ppt, change_dict, time, range_years, surname=True, year=year)
+    ppt = lengthen_name(ppt, profession, change_dict, time, range_years, surname=True, year=year)
 
     print('      RUNNING: LENGTHEN GIVEN NAME')
-    ppt = lengthen_name(ppt, change_dict, time, range_years, surname=False, year=year)
+    ppt = lengthen_name(ppt, profession, change_dict, time, range_years, surname=False, year=year)
 
     # cleans up 1-character differences in long names
     print('      RUNNING: STANDARDISE LONG FULL NAMES')
@@ -93,11 +93,13 @@ def clean(ppt, change_dict, range_years, year, profession):
         return clean(ppt, change_dict, range_years, year=year, profession=profession)  # recurse
 
 
-def make_log_file(change_dict, out_path):
+def make_log_file(profession, change_dict, out_path):
     """
     Makes a log file (as csv) of before and after states, so we can see what our functions changed.
+
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param change_dict: a three level dict binning before-after states by the function that did the
-            changes and the time of the run of 'prep.standardise.clean' which invoked said functions.
+            changes and the time of the run of 'preprocess.standardise.clean' which invoked said functions.
             e.g. {
                   'time_of_run_1' : {'func1' : {'before1' : 'after1', 'before2' : 'after2'},
                   'time_of_run_2' : {'func2' : {'before1' : 'after1', 'before2' : 'after2'}
@@ -106,7 +108,8 @@ def make_log_file(change_dict, out_path):
     :return: None
     """
 
-    with open(out_path, 'w') as out_p:
+    out_file = out_path + profession + '_standardisation_change_log.csv'
+    with open(out_file, 'w') as out_p:
         writer = csv.writer(out_p)
         writer.writerow(['time', 'function', 'before', 'after'])
         for time, funcs in change_dict.items():  # run-level, key = time of run
@@ -148,7 +151,7 @@ def move_surname(person_period_table, change_dict, time):
     change_dict[time][func] = {}
     corrected_data_table = []
 
-    with open('prep/gender/ro_gender_dict.txt') as gd:
+    with open('preprocess/gender/ro_gender_dict.txt') as gd:
         gender_dict = json.load(gd)
         for row in person_period_table:
             names = list(filter(None, row[1].split(' ')))
@@ -218,6 +221,7 @@ def move_surname(person_period_table, change_dict, time):
                 # eliminate parentheses in all other surnames too
                 surname = row[0].replace('(', '').replace(')', '')
                 corrected_data_table.append([surname] + row[1:])
+
     return helpers.deduplicate_list_of_lists(corrected_data_table)
 
 
@@ -249,10 +253,11 @@ def name_order(person_period_table):
         sorted_surnames = ' '.join(sorted(row[0].split()))
         sorted_given_names = ' '.join(sorted(row[1].split()))
         name_sorted_table.append([sorted_surnames, sorted_given_names] + row[2:])
+
     return helpers.deduplicate_list_of_lists(name_sorted_table)
 
 
-def lengthen_name(person_period_table, change_dict, time, range_years, surname=True, year=False):
+def lengthen_name(person_period_table, profession, change_dict, time, range_years, surname=True, year=False):
     """
     for reasons of real change or data input inconsistency, a person's name may change over time.
     For example, marriage leads to surname change, or you change employer and your new workplace
@@ -306,6 +311,7 @@ def lengthen_name(person_period_table, change_dict, time, range_years, surname=T
     0.05 of a percent.
 
     :param person_period_table: a table of person-periods (e.g. person-years) as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :param range_years: int, how many years our data covers
     :param change_dict: a dict in which we mark before (key) and after (value) states
     :param time: time string that stamps in which run of the clean function the changes below occurred
@@ -357,12 +363,20 @@ def lengthen_name(person_period_table, change_dict, time, range_years, surname=T
 
         # reintroduce sequence rows, updated with maximised surname
         for row in person_period_table[low_bound: high_bound]:
+
+            # FIRST IF CONDITION FOR REPLACEMENT
             # avoid mistakes like
             # ANDREI | LAURA VALI --> ANDREI | LAURA MARINA
             # yes the second name is longer, but these are actually different people
             # the trick is to avoid changing names which have the same number of components: in the example above,
             # both names have three components, so we don't change -- recall, we want to lengthen, not swap
-            if len(longest_n.split()) != len(row[name_idx].split()):
+
+            # SECOND IF CONDITION FOR REPLACEMENT
+            # don't put in known exceptions to name lengthening, per profession
+
+            if len(longest_n.split()) != len(row[name_idx].split()) \
+                    and (profession == 'executori' and longest_n not in executori_name_extension_exceptions):
+
                 long_name_table.append([longest_n] + row[1:]) if surname \
                     else long_name_table.append([row[0]] + [longest_n] + row[2:])
                 changed_names.add(row[0] + ' | ' + row[1])
@@ -435,6 +449,9 @@ def get_sequence_bounds(pers_per_tab, ref_row, range_years, surname=False, year=
     return bfd_idx, ffd_idx
 
 
+executori_name_extension_exceptions = {"CSABA JR", "M MARIN", "MIHAI SEBASTIAN", "IOAN VASILE"}
+
+
 def standardise_long_full_names(person_period_table, change_dict, time):
     """
     some names are off by one character, due to inconsistent diacritic use for faulty input. For instance,
@@ -495,8 +512,6 @@ def standardise_long_full_names(person_period_table, change_dict, time):
     # add the translation dictionary to the change log
     for k, v in trans_dict.items():
         change_dict[time]['standardise_long_full_names'][k] = v
-
-    # TODO put example in the test csv to test this function; I feel like there's an example missing here...
 
     return helpers.deduplicate_list_of_lists(standardised_names_table)
 
@@ -577,7 +592,8 @@ def full_name_adhoc_corrector(person_period_table, profession):
     :return: a person-period table with full names standardised according to the translation dictionaries.
     """
 
-    translation_dictionaries = {'judges': judges_fn_transdict, 'prosecutors': prosecutors_fn_transdict}
+    translation_dictionaries = {'judges': judges_fn_transdict, 'prosecutors': prosecutors_fn_transdict,
+                                'executori': executori_fn_transdict}
     td = translation_dictionaries[profession]
 
     corrected_table = []
@@ -680,11 +696,18 @@ prosecutors_fn_transdict = {"ARUNCUTEAN | IONELIA": "ARUNCUTEAN | IONELA", "BALO
                             "VLADU | MINODORA": "VLAD | MINODORA", "VOICU | ADRIAN": "VOICU | ADRIANA",
                             "VORONEANU | DENISIA": "VORONEANU | DENISA", "ŞANDRU | ION": "ŞANDRU | IOAN"}
 
+executori_fn_transdict = {
+    "ILIE | PANAITE": "PANAITE | ILIE", "DUMITRU | SAHLIAN": "SAHLIAN | DUMITRU",
+    "FEDIUC | GHE MARIA": "FEDIUC | GHEORGHE MARIAN", "HUŢIU | CONSTANTI VASILE": "HUŢIU | CONSTANTIN VASILE ",
+    "SÂNTEA | COSMIN SIBIU": "SÂNTEA | COSMIN DAN", "PINTILIE | GABRIE LUCIAN": "PINTILIE | GABRIEL LUCIAN ",
+    "NIŢU | ION SLOBOZIA": "NIŢU | ION", "VĂLEANU | MIE": "VĂLEANU | ILIE", "TĂTARU | IAN": "TĂTARU | IAN",
+    "VASILE | BAIA MARE MARIAN": "VASILE | MARIAN",
+    "DUMITRU GABRIEL VASILE | GABRIELA SIMONA": "VASILE | DUMITRU GABRIEL",
+    "ZACRONEA | C CIPRIAN": "ZACORNEA | CIPRIAN CONSTANTIN", "ZABOLOTNĂI | CIPRIAN CONSTANTIN": "ZABOLOTNĂI | VLADIMIR"
+}
+
+
 # TODO two more problems
-#  a) sometimes one year is missing in an otherwise continuous sequence
-#  b) for some of the common names, the slight name changes slices sequences up incorrectly -- eg. CONSTANTIN ION
-#     and CONSTANTIN IOAN, who are two different people with scrambled sequences because of incorrect name
-#     transcription through their career
 #   c) why was DOBRIN | RODICA not converted to DOBRIN MORMOE | RODICA?
 #   d) need to do another full-name extend on the full sorted only by first full name, and given name sorted only
 #      by first given name; in both cases, need to put a limit in for year jumps, i.e. stop if year jumps
