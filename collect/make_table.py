@@ -191,8 +191,7 @@ def get_csv_people_periods(in_file_path):
 
     # read in the base data
     with open(in_file_path, 'r') as in_file:
-        header = ["nume", "prenume", "sediu", "an", "camera", "localitate", "stagiu", "altele"]
-        reader = csv.DictReader(in_file, fieldnames=header)
+        reader = csv.DictReader(in_file)
 
         # clean the rows we already have and dump the clean versions in a new table
         for row in reader:
