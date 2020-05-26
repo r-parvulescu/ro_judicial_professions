@@ -5,6 +5,7 @@ infile headers: nume, prenume, instanță/parchet, an, lună
 
 import os
 import csv
+import operator
 import pandas as pd
 from preprocess import standardise
 from preprocess import sample
@@ -54,9 +55,10 @@ def preprocess(in_directory, out_path, std_log_path, pids_log_path, profession):
     ppts['year'][0] = standardise.clean(ppts['year'][0], change_dict, year_range, year, profession)
     standardise.make_log_file(profession, change_dict, std_log_path)
 
-    # add gender and unit info
+    # add gender and row id
     ppts['year'][0] = add_rowid_gender(ppts['year'][0])
 
+    # if we're dealing with judges or prosecutors, add workplace codes
     if profession == 'judges' or profession == 'prosecutors':
         ppts['year'][0] = add_workplace_profile(ppts['year'][0], profession)
 
@@ -69,7 +71,7 @@ def preprocess(in_directory, out_path, std_log_path, pids_log_path, profession):
         writer = csv.writer(out_file)
         # put in the header
         writer.writerow(get_header(profession))
-        [writer.writerow(row) for row in ppts['year'][0]]
+        [writer.writerow(row) for row in sorted(ppts['year'][0], key=operator.itemgetter(1))]  # sort by unique ID
 
 
 def add_rowid_gender(person_period_table):

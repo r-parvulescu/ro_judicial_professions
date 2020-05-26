@@ -57,6 +57,20 @@ def no_space_name_replacer(text, dictio):
     return text
 
 
+def single_word_to_multiword(text, dictio):
+    """
+    Replaces an instance of a single work with a multiword variant, e.g. CLUJ --> CLUJ NAPOCA.
+    NB: It's import that we match the whole string, otherwise we make mistakes like "CLUJ" --> "CLUJ CLUJ NAPOCA"
+
+    :param text: a string
+    :param dictio: a dictionary
+    :return: the dictio value corresponding to "text
+    """
+    if text in dictio:
+        text = dictio[text]
+    return text
+
+
 given_name_mistakes_transdict = {
     "AMCA": "ANCA", "AMDREEA": "ANDREEA", "ANGELAA": "ANGELA", "CODRŢA": "CODRUŢA",
     "CRIASTIANA": "CRISTIANA", "CRSITINA": "CRISTINA", "DANDU": "SANDU",
@@ -80,7 +94,7 @@ given_name_mistakes_transdict = {
     "EUJEN": "EUGEN", "VIORIVA": 'VIORICA', "EMANELA": "EMANUELA", "VASIICĂ": "VASILICĂ",
     "DUMMITRU": "DUMITRU", "EMANUEAL": "EMANUEL", "VASILII": 'VASILI', "RALUCAMARIANA": "RALUCA MARIANA",
     "DUMIRTU": "DUMITRU", "LOSIF": "IOSIF", "DURNITRU": "DUMITRU", "ISVAN": "ISTVAN", "LULIAN": "IULIAN",
-    "GHEROGE": "GHEORGHE", "IOSN": "IOAN", "CIRPIAN": "CIPRIAN", "LONEL": "IONEL",
+    "GHEROGHE": "GHEORGHE", "IOSN": "IOAN", "CIRPIAN": "CIPRIAN", "LONEL": "IONEL",
     "BAGDAN": "BOGDAN", "GABRIELVALENTIN": "GABRIEL VALENTIN", "FLORINEI": "FLORINEL", "GRIELA": "GABRIELA",
     "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN"
 }
@@ -113,7 +127,7 @@ given_name_diacritics_transdict = {
     "RAZVAN": "RĂZVAN", "STANCESCU": "STĂNCESCU", "ENIKO": "ENIKŐ", "MANDICA": "MANDICĂ",
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
-    "SADÎC": 'SADÂC', "JENO": "JENŐ", "GABOR": "GÁBOR"
+    "SADÎC": 'SADÂC', "JENO": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA"
 }
 
 
@@ -766,7 +780,7 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     :return: cleaned names
     """
 
-    surnames, given_names, town, chamber = exec_str_cln(surnames), exec_str_cln(given_names), \
+    surnames, given_names, chamber, town = exec_str_cln(surnames), exec_str_cln(given_names), \
                                            exec_str_cln(chamber), exec_str_cln(town)
 
     # remove a maiden name marker from the surnames
@@ -775,13 +789,18 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     # run given names through the translation dictionaries
     given_names = space_name_replacer(given_names, given_name_mistakes_transdict)
     given_names = no_space_name_replacer(given_names, given_name_diacritics_transdict)
+    surnames = no_space_name_replacer(surnames, executori_surname_transdict)
 
     # run chamber name through translation dictionaries
-    chamber = no_space_name_replacer(chamber, executori_chamber_transdict)
+    chamber = single_word_to_multiword(chamber, executori_chamber_transdict)
 
     # return, removing outside spaces and reducing multiple spaces to one
     return ' '.join(surnames.split()).strip(), ' '.join(given_names.split()).strip(), \
            ' '.join(chamber.split()).strip(), ' '.join(town.split()).strip()
+
+
+executori_surname_transdict = {"MILOS": "MILOŞ", "TALPA": "TALPĂ", "OANA": "OANĂ", "CHERSA": "CHERŞA",
+                               "FRINCU": "FRÂNCU"}
 
 
 def exec_str_cln(text):
@@ -804,4 +823,4 @@ def exec_str_cln(text):
 
 
 executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
-                               "SFÂNTU": "SFÂNTU GHEORGHE"}
+                               "SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORSURA BUZĂULUI"}

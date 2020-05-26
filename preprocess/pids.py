@@ -36,6 +36,9 @@ def pids(person_year_table, profession, pids_log_path):
     # give each person-year a person-year ID
     person_year_table_with_pids = unique_person_ids(distinct_persons, change_log)
 
+    # since we've added and removed rows, we need to update the row IDs
+    person_year_table_with_pids = [[idx] + row[1:] for idx, row in enumerate(person_year_table_with_pids)]
+
     # write to disk the change log
     change_log = pd.DataFrame(change_log)
     change_log_out_path = pids_log_path + profession + '_pids_change_log.csv'
@@ -170,7 +173,12 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
         if len(years_and_workplaces) < len(ps):
 
             # associate workplaces with years
-            [years_and_workplaces[row[5]].append(row[4]) for row in ps]  # row[4] = workplaces
+
+            # if dealing with judges or prosecutors, use the workplace info in row[4]
+            if profession == 'judges' or profession == 'prosecutors':
+                [years_and_workplaces[row[5]].append(row[4]) for row in ps]  # row[4] = workplaces
+            else:  # we're dealing with notaries and executori, use town info in row[7]
+                [years_and_workplaces[row[5]].append(row[7]) for row in ps]
 
             # CASE (F)
             # if one year features 3+ workplaces, mark that person-sequence aside for manual inspection
@@ -228,7 +236,8 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
                                 and max(overlap_years) == max(years_and_workplaces):
                             # mark for removal the workplace in the first row
                             # this choice is arbitrary, it only matters that it be applied consistently
-                            first_workplace = ps[0][4]
+                            first_workplace = ps[0][4] if profession == 'judges' or profession == 'prosecutors' \
+                                else ps[0][7]
                             [to_remove.add(str(yr) + '-' + first_workplace) for yr in overlap_years]
 
                         # CASES (C) OR (H)
@@ -286,7 +295,10 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
             # the new person-sequence, without overlaps
             new_ps = []
             for pers_yr in ps:
-                if str(pers_yr[5]) + '-' + pers_yr[4] not in to_remove:  # the year-workplace combination
+                workplace = pers_yr[4] if profession == 'judges' or profession == 'prosecutors' \
+                    else pers_yr[7]
+
+                if str(pers_yr[5]) + '-' + workplace not in to_remove:  # the year-workplace combination
                     new_ps.append(pers_yr)
 
             # and add the new person-sequence to the list of distinct persons
@@ -294,15 +306,26 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
 
             # keep track of the changes, so we can inspect visually and make sure it's behaving correctly
 
+            # sort by surname, given name, and year
             ps.sort(key=operator.itemgetter(1, 2, 5)), new_ps.sort(key=operator.itemgetter(1, 2, 5))
 
             # we want a double-column csv file:
             # old person-sequence in first column, no-overlap sequence in second column
             for idx, pers_yr in enumerate(ps):
                 if idx < len(new_ps):
-                    change_log.append(pers_yr[1:3] + pers_yr[4:6] + ['', ''] + new_ps[idx][1:3] + new_ps[idx][4:6])
-                else:
-                    change_log.append(pers_yr[1:3] + pers_yr[4:6])
+
+                    # handle the fact that the judges/prosecutors and executori/notaries tables are shaped differently
+                    if profession == 'judges' or profession == 'prosecutors':
+                        change_log.append(pers_yr[1:3] + pers_yr[4:6] + ['', ''] + new_ps[idx][1:3] + new_ps[idx][4:6])
+                    else:
+                        change_log.append(pers_yr[1:3] + pers_yr[5:8] + ['', ''] + new_ps[idx][1:3] + new_ps[idx][5:8])
+
+                else:  # when the old sequence surpases the new
+                    if profession == 'judges' or profession == 'prosecutors':
+                        change_log.append(pers_yr[1:3] + pers_yr[4:6])
+                    else:
+                        change_log.append(pers_yr[1:3] + pers_yr[5:8])
+
             change_log.append(['\n'])
 
             # and update the counter of net person-years
@@ -333,9 +356,6 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
 
     # and return the list of distinct persons
     return distinct_persons
-
-
-# TODO the overlap corrector catches but does not eliminate overlaps for executori -- see why
 
 
 def if_transition(years_and_workplaces, overlap_years):
@@ -459,17 +479,29 @@ def split_sequences(profession, person_sequence, change_log, odd_person_sequence
 
         # side-by-side for input sequence and first output sequence
         for idx, pers_yr in enumerate(p_seqs[0]):
-            comparison_row = person_sequence[idx][1:3] + person_sequence[idx][4:6] + ['', ''] + \
-                             pers_yr[1:3] + pers_yr[4:6]
+            if profession == 'judges' or profession == 'prosecutors':
+                comparison_row = person_sequence[idx][1:3] + person_sequence[idx][4:6] + ['', ''] + \
+                                 pers_yr[1:3] + pers_yr[4:6]
+            else:
+                comparison_row = person_sequence[idx][1:3] + person_sequence[idx][5:8] + ['', ''] + \
+                                 pers_yr[1:3] + pers_yr[5:8]
+
             change_log.append(comparison_row)
 
         change_log.append(6 * [''] + ['NEXT PERSON'])
 
         # side-by-side for input sequence and second output sequence
         for idx, pers_yr in enumerate(p_seqs[1]):
-            comparison_row = person_sequence[len(p_seqs[0]) + idx][1:3] + \
-                             person_sequence[len(p_seqs[0]) + idx][4:6] + ['', ''] + \
-                             pers_yr[1:3] + pers_yr[4:6]
+
+            if profession == 'judges' or profession == 'prosecutors':
+                comparison_row = person_sequence[len(p_seqs[0]) + idx][1:3] + \
+                                 person_sequence[len(p_seqs[0]) + idx][4:6] + ['', ''] + \
+                                 pers_yr[1:3] + pers_yr[4:6]
+            else:
+                comparison_row = person_sequence[len(p_seqs[0]) + idx][1:3] + \
+                                 person_sequence[len(p_seqs[0]) + idx][5:8] + ['', ''] + \
+                                 pers_yr[1:3] + pers_yr[5:8]
+
             change_log.append(comparison_row)
         change_log.append('\n')
 
@@ -553,14 +585,16 @@ def interpolate_person_years(distinct_persons, change_log):
                     #  whether or not the gap marks a change in workplace, insert a person-year with the missing
                     # year and the workplace value of the last year before the gap; workplace before the gap
                     # (and not the first workplace after) is arbitrary: it only matters that we do so consistently
-                    intrplt_pers_seq.insert(0, pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 1)] + pers_seq[i][5:])
+                    new_person_year = pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 1)] + pers_seq[i][6:]
+                    intrplt_pers_seq.insert(0, new_person_year)
 
                 # CASES (B) and (D)
                 # we're missing two years, i.e. the year difference between two consecutive person-years is 3
                 if year_diff == 3:
                     # same as above; insert two person-years with the missing years and the departure workplace
-                    intrplt_pers_seq.insert(0, pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 1)] + pers_seq[i][5:])
-                    intrplt_pers_seq.insert(0, pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 2)] + pers_seq[i][5:])
+                    new_person_year_1 = pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 1)] + pers_seq[i][6:]
+                    new_person_year_2 = pers_seq[i][:5] + [str(int(pers_seq[i][5]) + 2)] + pers_seq[i][6:]
+                    intrplt_pers_seq.insert(0, new_person_year_1), intrplt_pers_seq.insert(0, new_person_year_2)
 
             # sort the new person-sequence by year
             intrplt_pers_seq.sort(key=operator.itemgetter(5))
@@ -572,7 +606,6 @@ def interpolate_person_years(distinct_persons, change_log):
                                       py[1:3] + py[4:6])
                 else:
                     change_log.append(6 * [''] + py[1:3] + py[4:6])
-
             # add the person-sequence with interpolated years to the new list
             interpolated_distinct_persons.append(intrplt_pers_seq)
 
