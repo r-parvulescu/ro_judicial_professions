@@ -37,15 +37,150 @@ def people_per_level_per_year(person_year_table, start_year, end_year, ratios=Fa
         return sorted(list(ids_per_year_per_level))
 
 
-# MEASURES OF MOBILITY/CHANGE #
+# COHORT METRICS #
 
-def total_mobility(person_year_table, start_year, end_year):
-    """return a dict of year : total mobility"""
-    mobility_per_year = {year: 0 for year in range(start_year, end_year + 1)}
-    for py in person_year_table:
-        if py[5] != '0':
-            mobility_per_year[int(py[6])] += 1
-    return sorted(list(mobility_per_year.items()))[1:-1]
+def entry_cohort_sizes(person_year_table, start_year, end_year, unit=None):
+    """
+    Return the size of entry cohorts for each year between start_year and end_year.
+    If unit is provided (e.g. hierarchical level, area), also report cohort sizes per unit (e.g. cohort size per area)
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param start_year: int, the first year we consider
+    :param end_year: int, the last year we consider
+    :param unit:
+    :return a dict of key = year, val = [size]; if units provided, ley = year, val = [(unit 1, size), (unit 2, size)]
+    """
+    pass
+
+
+def cohort_counts(person_year_table, start_year, end_year):
+    """
+    For each year in the range from start_year to end_year, return a list of
+    (count of women, count of men, count of dk, cohort size, percent female), of those that joined the profession
+    that year.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param start_year: int, year we start looking at
+    :param end_year: int, year we stop looking
+    :return: a dict of years, where each value is a tuple with gender metrics
+    """
+    # make a dict, key = year, value = empty list with five slots, one for each of
+    # count women, count men, count dk, total count, percent female
+    cohorts = {year: [0, 0, 0, 0, 0] for year in range(start_year, end_year + 1)}
+
+    # group by people
+    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(1))]  # row[1] == PID
+
+    for person in people:
+        # the first observation in a person-sequence ordered by year is the first year of their career
+        start_career = person[0]
+        # gender = row[4]
+        gender = start_career[4]
+        # year = row[6]
+        cohort_year = int(start_career[6])
+
+        if start_year <= cohort_year <= end_year:
+            if gender == 'f':
+                cohorts[cohort_year][0] += 1
+            elif gender == 'm':
+                cohorts[cohort_year][1] += 1
+            else:  # gender == 'dk':
+                cohorts[cohort_year][2] += 1
+
+    # get cohort sizes
+    for cohort_year in cohorts:
+        total_entries = sum(cohorts[cohort_year][:3])
+        cohorts[cohort_year][3] = total_entries
+
+    # if there are no entries for a particular year (i.e. cohort size = 0) remove the year from the cohort dict
+    cohorts = {year: measures for year, measures in cohorts.items() if measures[3] != 0}
+
+    # now get percent female per cohort
+    for cohort_year in cohorts:
+        percent_female = int(round(cohorts[cohort_year][0] / cohorts[cohort_year][3], 2) * 100)
+        cohorts[cohort_year][4] = percent_female
+
+    return cohorts
+
+
+def cohort_name_lists(person_year_table, start_year, end_year):
+    """
+    For each year in the range from start_year to end_year, return a list of full-names of the people that joined
+    the profession in that year.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param start_year: int, year we start looking at
+    :param end_year: int, year we stop looking
+    :return: a dict of years, where each value is a list of full-name tuples of the people who joined the profession
+             that year
+    """
+    # make a dict, key = year, value = empty list
+    cohorts = {year: [] for year in range(start_year, end_year + 1)}
+    # group by people
+    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(1))]  # row[1] == PID
+
+    # append the full name of the first year of each person to its cohort
+    for person in people:
+        first_year = person[0]
+
+        if start_year <= int(first_year[6]) <= end_year:  # row[6] = year
+            # row[2] = surname, row[3] = given_name
+            cohorts[int(first_year[6])].append(first_year[2] + ' | ' + first_year[3])
+
+    return cohorts
+
+
+def brought_in_by_family(person_year_table, start_year, end_year):
+    """
+    Finds people in each cohort that share at least one surname with someone who was ALREADY in the profession.
+    The assumption is that a surname match indicates kinship.
+
+    Because a person can walk in their relative's occupational footsteps both via direct help (e.g. inheriting a
+    business) or by more diffuse mechanisms (e.g. your mother was merely an occupational role model), we do not limit
+    how long ago someone with your last name was in the profession. Your tenures may overlap (i.e. you're both in the
+    profession at the same time) or the other person may have retired fifteen years before you joined.
+
+    NB: because we consider overlap with ANY surnames (to catch people who add surnames, which is especially
+    the case for married women) we make bags of all DISTINCT surnames, so a compound surname like "SMITH ROBSON"
+    would become two surnames, "SMITH" and "ROBSON".
+
+    NB: this function is meant to roughly identify kinship and err on the side of inclusion. It assumes that each
+    match is then human-checked to weed out false positives, e.g. common surnames that coincidentally overlap.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param start_year: int, the first year we consider
+    :param end_year: int, the last year we consider
+    :return: a dict with key = year and val = list of cohort members who share a surname with a more senior professional
+    """
+
+    # initialise a dict with distinct surnames for each year, then populate it
+    surnames_by_year = {year: set() for year in range(start_year, end_year + 1)}
+    for person_year in person_year_table:
+        year = int(person_year[6])  # person_year[6] = year
+        surnames = person_year[2].split()  # person_year[2] = surnames
+        surnames_by_year[year].update(surnames)
+
+    # get the fullnames of each cohort
+    cohort_names = cohort_name_lists(person_year_table, start_year, end_year)
+
+    # initiate a dict with key = year and value = full name of cohort member with a surname match to a previous year
+    fullname_with_surname_match = {year: set() for year in range(start_year, end_year + 1)}
+
+    # keep a cohort full name if at least one of its surnames matches a surname from a prior year
+    for cohort_year, full_names in cohort_names.items():
+
+        # get the set of all surnames from years BEFORE the cohort year, i.e. before you joined the profession
+        surnames_in_prior_years = set()
+        [surnames_in_prior_years.update(surnames) for year, surnames in surnames_by_year.items()
+         if int(year) < int(cohort_year)]
+
+        # see which of the current cohort surnames match those from prior years,
+        # and keep that full name if there's a match
+        for fn in full_names:
+            surnames = fn.split(' | ')[0].split()
+            [fullname_with_surname_match[cohort_year].add(fn) for sn in surnames if sn in surnames_in_prior_years]
+
+    return fullname_with_surname_match
 
 
 def entries(person_year_table, start_year, end_year, year_sum=False):
@@ -57,6 +192,17 @@ def entries(person_year_table, start_year, end_year, year_sum=False):
         if len(seq) > 1:  # ignore sequences one long, marking as entry or exit would double-count
             year_level_counters[int(seq[0][6])][int(seq[0][-1])] += 1  # first sequence element marks entry point
     return sorted_output(year_level_counters, 1, year_sum)[1:]  # first observation wrong due to censoring
+
+
+# MEASURES OF MOBILITY/CHANGE #
+
+def total_mobility(person_year_table, start_year, end_year):
+    """return a dict of year : total mobility"""
+    mobility_per_year = {year: 0 for year in range(start_year, end_year + 1)}
+    for py in person_year_table:
+        if py[5] != '0':
+            mobility_per_year[int(py[6])] += 1
+    return sorted(list(mobility_per_year.items()))[1:-1]
 
 
 def delta_attribute(person_year_table, attribute, attr_type, per_unit, metric, output_series=False):

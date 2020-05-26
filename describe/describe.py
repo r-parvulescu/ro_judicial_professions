@@ -6,6 +6,32 @@ import matplotlib.ticker as ticker
 from describe import descriptives
 
 
+def executori_describe(in_file_path, out_directory, start_year, end_year):
+    """
+    Generate basic descriptives for executori judecătoreşti / judicial debt collectors, and write them to disk.
+
+    :param in_file_path: path to the base data file
+    :param out_directory: directory where the descriptives files will live
+    :param start_year: first year we're considering
+    :param end_year: last year we're considering
+    :return: None
+    """
+
+    with open(in_file_path, 'r') as infile:
+        reader = csv.reader(infile)
+        next(reader, None)  # skip headers
+        table = list(reader)
+
+    # get basic descriptives
+
+    # figure 1, evolution of percent female
+
+    # figure 1, probability of retirement and entry, by gender
+
+
+# TODO fill out the skeleton
+
+
 def describe(profession, source_data, start_year, end_year, prosecs=False):
     """make table and figures of descriptive statistics"""
 
@@ -18,9 +44,6 @@ def describe(profession, source_data, start_year, end_year, prosecs=False):
         reader = csv.reader(infile)
         next(reader, None)  # skip headers
         table = list(reader)
-
-    # [print(m) for m in descriptives.delta_attribute(table, 'sex', 'f', ['an'], "percent")]
-    # print(descriptives.delta_attribute(table, 'up', ['sex'], "count"))
 
     # spit out basic statistics
     make_descriptives_table(table, outfile, start_year, end_year, prosecs=prosecs)
