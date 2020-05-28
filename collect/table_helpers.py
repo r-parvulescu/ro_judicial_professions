@@ -57,9 +57,9 @@ def no_space_name_replacer(text, dictio):
     return text
 
 
-def single_word_to_multiword(text, dictio):
+def key_to_value(text, dictio):
     """
-    Replaces an instance of a single work with a multiword variant, e.g. CLUJ --> CLUJ NAPOCA.
+    Replaces the key with its value
     NB: It's import that we match the whole string, otherwise we make mistakes like "CLUJ" --> "CLUJ CLUJ NAPOCA"
 
     :param text: a string
@@ -791,8 +791,10 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     given_names = no_space_name_replacer(given_names, given_name_diacritics_transdict)
     surnames = no_space_name_replacer(surnames, executori_surname_transdict)
 
-    # run chamber name through translation dictionaries
-    chamber = single_word_to_multiword(chamber, executori_chamber_transdict)
+    # run chamber and town names through translation dictionaries
+    chamber = key_to_value(chamber, executori_chamber_transdict)
+    town = key_to_value(town, executori_town_transdict)
+    town = executori_town_exceptions(town, chamber)
 
     # return, removing outside spaces and reducing multiple spaces to one
     return ' '.join(surnames.split()).strip(), ' '.join(given_names.split()).strip(), \
@@ -822,8 +824,39 @@ def exec_str_cln(text):
     return ' '.join(text.split()).strip()
 
 
+def executori_town_exceptions(town, chamber):
+    """
+    There's a misspelling of towns in which it is unclear which town is being referred to unless we also
+    consult information about its chamber. This function catches and corrects that exception.
+
+    :param town: string, the town (localitatea) in which an executor has their office
+    :param chamber: string, the chamber (camera), which is the regional unit in which the executor operates
+    :return: the corrected town string
+    """
+
+    if town == "CÂMPULUNG" and chamber == "SUCEAVA":
+        town = "CÂMPULUNG MOLDOVENESC"
+    return town
+
+
 executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
                                "ALBA LULIA": "ALBA IULIA", "BACAU": "BACĂU", "BRASOV": "BRAŞOV",
                                "BUZĂU": "PLOIEŞTI"}
 
-executori_town_transdict = {"SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORSURA BUZĂULUI"}
+executori_town_transdict = {"SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORSURA BUZĂULUI", "ALBA LULIA": "ALBA IULIA",
+                            "BÂRLAN": "BÂRLAD", "CHIŞINĂU CRIŞ": "CHIŞINEU CRIŞ", "CLUJ": "CLUJ NAPOCA",
+                            "CURTEA DE": "CURTEA DE ARGEŞ", "DROBETA TURNU": "DROBETA TURNU SEVERIN",
+                            "GHEORGHIENI": "GHEORGHENI", "GHEORGHE": "SFÂNTU GHEORGHE", "GĂESTI": "GĂEŞTI",
+                            "INTORSURA BUZĂULUI": "ÎNTORSURA BUZĂULUI", "MARE": "SÂNNICOLU MARE",
+                            "SÂNNICOLAU": "SÂNNICOLAU MARE", "MARMAŢIEI": "SIGHETU MARMAŢIEI", "MOLDOVA":
+                                "MOLDOVA NOUĂ", "MOLDOVENESC": "CÂMPULUNG MOLDOVENESC", "MACIN": "MĂCIN",
+                            "ODOREHIU": "ODORHEIU SECUIESC", "ORAVITA": "ORAVIŢA", "ORAŞTIE": "ORĂŞTIE",
+                            "PODU": "PODU TURCULUI", "PODUL TURCULUI": "PODU TURCULUI", "RADUCANENI": "RĂDUCĂNENI",
+                            "RM SĂRAT": "RÂMNICU SĂRAT", "RM VÂLCEA": "RÂMNICU VÂLCEA", "ROŞIORI DE": "ROŞIORI DE VEDE",
+                            "RĂCĂRI": "RĂCARI", "SECUIESC": "ODORHEIU SECUIESC", "SECUISC": "ODORHEIU SECUIESC",
+                            "SFANTU GHEORGHE": "SFÂNTU GHEORGHE", "SIGHISOARA": "SIGHIŞOARA",
+                            "SILVANIEI": "ŞIMLEU SILVANIEI", "SÂNICOLAU MARE": "SÂNNICOLAU MARE",
+                            "TG BUJOR": "TÂRGU BUJOR", "TG CĂRBUNEŞTI": "TÂRGU CĂRBUNEŞTI", "TG NEAMŢ": "TÂRGU NEAMŢ",
+                            "TULCEĂ": "TULCEA", "VIŞEUL DE SUS": "VIŞEU DE SUS", "VĂLENII DE": "VĂLENII DE MUNTE",
+                            "ZÂMEŞTI": "ZĂRNEŞTI", "ZĂRNEŞTI SUSPENDAT": "ZĂRNEŞTI", "ÎNTORSURA": "ÎNTORSURA BUZĂULUI",
+                            "ŞIMLEU": "ŞIMLEU SILVANIEI", "TÂRGU": "TÂRGU CĂRBUNEŞTI"}
