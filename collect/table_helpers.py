@@ -823,4 +823,7 @@ def exec_str_cln(text):
 
 
 executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
-                               "SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORSURA BUZĂULUI"}
+                               "ALBA LULIA": "ALBA IULIA", "BACAU": "BACĂU", "BRASOV": "BRAŞOV",
+                               "BUZĂU": "PLOIEŞTI"}
+
+executori_town_transdict = {"SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORSURA BUZĂULUI"}
