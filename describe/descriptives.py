@@ -4,103 +4,199 @@ Functions for calculating counts of different mobility events, across different 
 
 from operator import itemgetter
 import itertools
-import pandas as pd
+import copy
 
 
-# COUNTS OF ENTITIES #
-
-def people_per_year(person_year_table, start_year, end_year):
-    """returns a list of (year, count of unique people) tuples"""
-    ids_per_year = {year: set() for year in range(start_year, end_year + 1)}
-    [ids_per_year[int(py[6])].add(py[0]) for py in person_year_table]
-    return sorted(list({k: len(val) for k, val in ids_per_year.items()}.items()))
-
-
-def people_per_level_per_year(person_year_table, start_year, end_year, ratios=False):
+def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohorts=True, unit_type=None, entry=True):
     """
-    returns a list of (year : (count J, count TB, count CA, count ICCJ)) tuples
-    or if ratios=False of yearly ratios between the sizes of adjacent levels"""
-    ids_per_year_per_level = {year: {1: 0, 2: 0, 3: 0, 4: 0} for year in range(start_year, end_year)}
-    for py in person_year_table:
-        ids_per_year_per_level[int(py[6])][int(py[-1])] += 1
-    if ratios:  # get ratio of totals between level X and the level immediately below it
-        ratios_per_year = {}
-        for k, v in ids_per_year_per_level.items():
-            cnts = sorted(list(v.items()), key=itemgetter(1))
-            sorted_ratios = (round(cnts[0][1] / cnts[1][1], 2), round(cnts[1][1] / cnts[2][1], 2),
-                             round(cnts[2][1] / cnts[3][1], 2))
-            ratios_per_year[k] = sorted_ratios
-        return sorted(list(ratios_per_year.items()))
-    else:
-        ids_per_year_per_level = [(k, sorted(list(v.items()), key=itemgetter(1)))
-                                  for k, v in ids_per_year_per_level.items()]
-        return sorted(list(ids_per_year_per_level))
+    For each year in the range from start_year to end_year, return a dict of counts of women, men, don't knows,
+    cohort size, and percent women for that cohort.
 
+    If units are provided (e.g. geographic areas) it calculates the metrics per each unit, so e.g. cohort size per
+    year, for each geographic area.
 
-# COHORT METRICS #
-
-def entry_cohort_sizes(person_year_table, start_year, end_year, unit=None):
-    """
-    Return the size of entry cohorts for each year between start_year and end_year.
-    If unit is provided (e.g. hierarchical level, area), also report cohort sizes per unit (e.g. cohort size per area)
-
-    :param person_year_table: a table of person-years, as a list of lists
-    :param start_year: int, the first year we consider
-    :param end_year: int, the last year we consider
-    :param unit:
-    :return a dict of key = year, val = [size]; if units provided, ley = year, val = [(unit 1, size), (unit 2, size)]
-    """
-    pass
-
-
-def cohort_counts(person_year_table, start_year, end_year):
-    """
-    For each year in the range from start_year to end_year, return a list of
-    (count of women, count of men, count of dk, cohort size, percent female), of those that joined the profession
-    that year.
+    NB: there can be entry cohorts (those that joined the profession in year X) and exit cohorts (those that left
+    the profession in year Y).
 
     :param person_year_table: a table of person-years, as a list of lists
     :param start_year: int, year we start looking at
     :param end_year: int, year we stop looking
-    :return: a dict of years, where each value is a tuple with gender metrics
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param cohorts: bool, True if we want counts for entry and exit cohorts (e.g. all who entered the profession in 
+                          2012), False if we want counts for whole population (e.g. all professionals in 2012)
+    :param unit_type: None, or string; if string, type of the unit as it appears in header of person_year_table
+                      (e.g. "camera")
+    :param entry: bool, True if we're getting data for entry cohorts, False if for exit cohorts
+
+    :return: a dict of years, where each value is a dict with gender metrics
     """
-    # make a dict, key = year, value = empty list with five slots, one for each of
-    # count women, count men, count dk, total count, percent female
-    cohorts = {year: [0, 0, 0, 0, 0] for year in range(start_year, end_year + 1)}
 
-    # group by people
+    pop_counts = {'grand_total': metrics_dict(start_year, end_year)}
+    print(pop_counts)
+    units = None
+
+    # if we have units, initialise a dict of years for each unit
+    if unit_type:
+        unit_col_idx = get_header(profession).index(unit_type)
+        units = {person_year[unit_col_idx] for person_year in person_year_table}
+        pop_counts.update({unit: metrics_dict(start_year, end_year) for unit in units})
+
+    # make an identical dict for cohorts
+    cohort_counts = copy.deepcopy(pop_counts)
+
+    # get total counts
+    for person in person_year_table:
+        update_size_gender(pop_counts, person, start_year, end_year, profession, units, unit_type=unit_type)
+    percent_female(pop_counts, units, unit_type=unit_type)
+
+    # then get cohort counts
+
+    # group person-years by person
     people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(1))]  # row[1] == PID
-
     for person in people:
-        # the first observation in a person-sequence ordered by year is the first year of their career
-        start_career = person[0]
-        # gender = row[4]
-        gender = start_career[4]
-        # year = row[6]
-        cohort_year = int(start_career[6])
+        # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
+        edge_person_year = person[0] if entry else person[-1]
+        update_size_gender(cohort_counts, edge_person_year, start_year, end_year, profession,
+                           units, unit_type=unit_type)
+    percent_female(cohort_counts, units, unit_type=unit_type)
+    update_cohort_of_population(cohort_counts, pop_counts, entry=entry, units=units)
 
-        if start_year <= cohort_year <= end_year:
-            if gender == 'f':
-                cohorts[cohort_year][0] += 1
-            elif gender == 'm':
-                cohorts[cohort_year][1] += 1
-            else:  # gender == 'dk':
-                cohorts[cohort_year][2] += 1
+    return cohort_counts if cohorts else pop_counts
 
-    # get cohort sizes
-    for cohort_year in cohorts:
-        total_entries = sum(cohorts[cohort_year][:3])
-        cohorts[cohort_year][3] = total_entries
 
-    # if there are no entries for a particular year (i.e. cohort size = 0) remove the year from the cohort dict
-    cohorts = {year: measures for year, measures in cohorts.items() if measures[3] != 0}
+def update_size_gender(count_dict, row, start_year, end_year, profession, units, unit_type=None):
+    """
+    Counts the number of people per year; if unit is given, gives the count of person per year, per unit
 
-    # now get percent female per cohort
-    for cohort_year in cohorts:
-        percent_female = int(round(cohorts[cohort_year][0] / cohorts[cohort_year][3], 2) * 100)
-        cohorts[cohort_year][4] = percent_female
+    :param count_dict: a dictionary of counts -- for format, see function metrics_dict
+    :param row: a person-year as a list
+    :param start_year: int, year we start looking at
+    :param end_year: int, year we stop looking
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param units: a set of unit categories, each a string
+    :param unit_type: None, or string; if string, type of the unit as it appears in header of person_year_table
+                      (e.g. "camera")
+    :return: None
+    """
 
-    return cohorts
+    # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
+    dict_row = row_to_dict(row, profession)
+    gender = dict_row['sex']
+    year = int(dict_row['an'])
+    unit = dict_row[unit_type] if units else None
+
+    # stay within bounds
+    if start_year <= year <= end_year:
+
+        # increment cohort sizes and cohort gender counters
+        count_dict['grand_total'][year]['total_size'] += 1
+        count_dict['grand_total'][year][gender] += 1
+        if unit_type:
+            count_dict[unit][year]['total_size'] += 1
+            count_dict[unit][year][gender] += 1
+
+
+def percent_female(count_dict, units, unit_type=None):
+    """
+    Update the percent_female value in the count_dict
+
+    :param count_dict: a dictionary of counts -- for format, see function metrics_dict
+    :param units: a set of unit categories, each a string
+    :param unit_type: None, or string; if string, type of the unit as it appears in header of person_year_table
+                      (e.g. "camera")
+    :return: None
+    """
+    # now get percent female per cohort, and per unit if applicable
+    for year in count_dict['grand_total']:
+        if count_dict['grand_total'][year]['total_size'] != 0:
+            count_dict['grand_total'][year]['percent_female'] = int(round(count_dict['grand_total'][year]['f']
+                                                                          / count_dict['grand_total'][year][
+                                                                              'total_size'],
+                                                                          2) * 100)
+        if unit_type:
+            for u in units:
+                if count_dict[u][year]['total_size'] != 0:
+                    count_dict[u][year]['percent_female'] = int(round(count_dict[u][year]['f']
+                                                                      / count_dict[u][year]['total_size'],
+                                                                      2) * 100)
+
+
+def update_cohort_of_population(cohorts_dict, population_dict, entry=True, units=None):
+    """
+    Updates the value that shows how big a yearly cohort is relative to all the people in that year.
+
+    NB: for entry cohorts, we compare cohort sizes to all people in the PREVIOUS year. For exit cohorts, we
+        compare cohort sizes to all people in the CURRENT year.
+
+    :param cohorts_dict:
+    :param population_dict:
+    :param entry:
+    :param units:
+    :return: None
+    """
+    for year in cohorts_dict['grand_total']:
+
+        # for entry cohorts, compare with preceding year, unless it's the first year
+        if entry and year - 1 in cohorts_dict:
+            yearly_pop = population_dict['grand_total'][year - 1]['total_size']
+        else:
+            yearly_pop = population_dict['grand_total'][year]['total_size']
+
+        if cohorts_dict['grand_total'][year]['total_size'] != 0:
+            cohorts_dict['grand_total'][year]['chrt_prcnt_of_pop'] = int(round(
+                cohorts_dict['grand_total'][year]['total_size'] / yearly_pop, 2) * 100)
+
+        if units:
+            for u in units:
+                # for entry cohorts, compare with preceding year, unless it's the first year
+                if entry and year - 1 in cohorts_dict:
+                    yearly_unit_pop = population_dict[u][year - 1]['total_size']
+                else:
+                    yearly_unit_pop = population_dict[u][year]['total_size']
+
+                if cohorts_dict[u][year]['total_size'] != 0:
+                    cohorts_dict[u][year]['chrt_prcnt_of_pop'] = int(round(
+                        cohorts_dict[u][year]['total_size'] / yearly_unit_pop, 2) * 100)
+
+
+def metrics_dict(start_year, end_year):
+    """
+    Make an empty dict where keys are years and values are dicts of metrics, most related to gender.
+    :param start_year: int, year we start looking
+    :param end_year: int, year we stop looking at
+    :return: dict
+    """
+    m_dict = {year: {'f': 0, 'm': 0, 'dk': 0, 'total_size': 0, 'chrt_prcnt_of_pop': 0, 'percent_female': 0, }
+              for year in range(start_year, end_year + 1)}
+    return m_dict
+
+
+def row_to_dict(row, profession):
+    """
+    Makes a dict by mapping list values to a list of keys, which vary by profession.
+    :param row: a list
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: dict
+    """
+    keys = get_header(profession)
+    return dict(zip(keys, row))
+
+
+def get_header(profession):
+    """
+    Different professions have different information, so the headers need to change accordingly.
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: header, as list
+    """
+
+    if profession == 'judges' or profession == 'prosecutors':
+        headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
+                   "ca cod", "trib cod", "jud cod", "nivel"]
+    else:
+        headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an",
+                   "camera", 'localitatea', 'stagiu', 'altele']
+
+    return headers
 
 
 def cohort_name_lists(person_year_table, start_year, end_year):
@@ -181,126 +277,3 @@ def brought_in_by_family(person_year_table, start_year, end_year):
             [fullname_with_surname_match[cohort_year].add(fn) for sn in surnames if sn in surnames_in_prior_years]
 
     return fullname_with_surname_match
-
-
-def entries(person_year_table, start_year, end_year, year_sum=False):
-    """count the number of entries or exits per year (and if year_sum=False, per level)"""
-    year_level_counters = year_level_dict(start_year, end_year)
-    person_year_table.sort(key=itemgetter(0, 6))
-    person_sequences = [g for k, [*g] in itertools.groupby(person_year_table, key=itemgetter(0))]
-    for seq in person_sequences:
-        if len(seq) > 1:  # ignore sequences one long, marking as entry or exit would double-count
-            year_level_counters[int(seq[0][6])][int(seq[0][-1])] += 1  # first sequence element marks entry point
-    return sorted_output(year_level_counters, 1, year_sum)[1:]  # first observation wrong due to censoring
-
-
-# MEASURES OF MOBILITY/CHANGE #
-
-def total_mobility(person_year_table, start_year, end_year):
-    """return a dict of year : total mobility"""
-    mobility_per_year = {year: 0 for year in range(start_year, end_year + 1)}
-    for py in person_year_table:
-        if py[5] != '0':
-            mobility_per_year[int(py[6])] += 1
-    return sorted(list(mobility_per_year.items()))[1:-1]
-
-
-def delta_attribute(person_year_table, attribute, attr_type, per_unit, metric, output_series=False):
-    """
-    metrics of person_years that are of mobility type per unit (e.g. per year, per level)
-    :param person_year_table: person-year table as list of lists
-    :param mobility_type: str:  'up', 'out', 'across', 'down', or 'NA'
-    :param per_unit: list of units as strings, e.g. ['year', 'level']
-    :param metric: str, "percent" or "count"
-    """
-    print(person_year_table[0])
-    columns = ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
-               "ca cod", "trib cod", "jud cod", 'nivel', 'None']
-    df = pd.DataFrame(person_year_table)
-    print(df[:5])
-    df = pd.DataFrame(person_year_table, columns=columns)
-    df = pd.get_dummies(df, columns=[attribute])
-    attr_dum_col = attribute + '_' + attr_type
-    measure = None   # errors out if no metric provided
-    if metric == "percent":
-        measure = df.groupby(per_unit)[attr_dum_col].mean().round(decimals=4)
-    if metric == "count":
-        measure = df.groupby(per_unit)[attr_dum_col].sum()
-    if output_series:
-        return measure
-    measure = measure.to_dict().items()
-    if len(per_unit) < 2:  # if just one unit, sort output ascending
-        return sorted(list(measure))
-    else:  # assumes first key element is always year
-        output = {}
-        for key, value in measure:
-            if key[0] not in output:
-                output[key[0]] = []
-            output[key[0]].append((*key[1:], value))
-        return sorted(list(output.items()))
-
-
-def mobility_per_year_per_unit(person_year_table, unit_list, start_year, end_year,
-                               unit_type, mobility_type, year_sum=False):
-    """
-    counts the number of mobility events per year, per unit
-    NB: units are either courts of appeals, tribunals, judecătorii.
-    NB: mobility types: 'up', 'across', 'down', 'out'
-    """
-
-    unit_types_idx = {'1': -2, '2': -3, '3': -4}
-    year_unit_counters = year_unit_dict(start_year, end_year + 1, unit_list)
-    for py in person_year_table:
-        if py[5] == mobility_type:
-            idx = unit_types_idx[unit_type]
-            if py[-1] == unit_type:
-                year_unit_counters[int(py[6])][py[idx]] += 1
-    return sorted_output(year_unit_counters, 0, year_sum)
-
-
-def mob_cohorts(person_year_table, years_after, start_year, end_year, percent=False):
-    """
-    counts of mobility events per cohort, up to X years after they enter
-    if percent=True return percent of cohort person-years accounted for by each mobility type
-    """
-    cohort_dict = {str(year): {'up': 0, 'down': 0, 'across': 0, 'out': 0, 'NA': 0, '0': 0}
-                   for year in range(start_year, end_year + 1)}
-    # groupby person  ID
-    person_year_table.sort(key=itemgetter(0, 6))
-    person_sequences = [g for k, [*g] in itertools.groupby(person_year_table, key=itemgetter(0))]
-    for seq in person_sequences:
-        entry_year = seq[0][6]
-        yr_range = min(len(seq), years_after)
-        for yr in range(yr_range):
-            cohort_dict[entry_year][seq[yr][5]] += 1
-    if percent:
-        for cohort, mob in cohort_dict.items():
-            sum_mob = sum(mob.values())
-            percent_mob = {k: round(weird_division(v, sum_mob), 3) for k, v in mob.items()}
-            cohort_dict[cohort] = percent_mob
-    return sorted_output(cohort_dict, 0, year_sum=False)[:-years_after + 1]
-
-
-def sorted_output(year_dict, sort_key, year_sum):
-    """returns year_dict as sorted list, by year by categories, or by year summed across categories"""
-    if year_sum:  # get sum of mobility across levels
-        year_dict = [(k, sum(v.values())) for k, v in year_dict.items()]
-    else:
-        year_dict = [(k, sorted(list(v.items()), key=itemgetter(sort_key)))
-                     for k, v in year_dict.items()]
-    return sorted(list(year_dict))
-
-
-def year_level_dict(l_yr, u_yr):
-    """return a dict of dicts, of years holding levels, from lower year to upper year"""
-    return {year: {1: 0, 2: 0, 3: 0, 4: 0} for year in range(l_yr, u_yr)}
-
-
-def year_unit_dict(l_yr, u_yr, unit_list):
-    """return a dict of dicts, of years holding units (e.g. courts of appeals), from lower year to upper year"""
-    return {year: {unit: 0 for unit in unit_list} for year in range(l_yr, u_yr)}
-
-
-def weird_division(n, d):
-    # from https://stackoverflow.com/a/27317595/12973664
-    return n / d if d else 0
