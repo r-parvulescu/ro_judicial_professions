@@ -32,7 +32,6 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
     """
 
     pop_counts = {'grand_total': metrics_dict(start_year, end_year)}
-    print(pop_counts)
     units = None
 
     # if we have units, initialise a dict of years for each unit

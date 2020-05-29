@@ -43,7 +43,7 @@ def get_unit_codes(profession):
         unit = 'parquet'
     if profession == 'judges':
         unit = 'court'
-    unit_codes = 'prep/units/' + unit + '_codes.txt'
+    unit_codes = 'preprocess/workplace/' + unit + '_codes.txt'
     with open(unit_codes, 'r') as uc:
         return json.load(uc)
 
@@ -80,12 +80,12 @@ def hierarchy_to_codes(profession):
 
     if profession == 'judges':
         parquet = False
-        units_hierarchical = 'prep/units/courts_hierarchical.txt'
-        units_codes = 'prep/units/court_codes.txt'
+        units_hierarchical = 'preprocess/workplace/courts_hierarchical.txt'
+        units_codes = 'preprocess/workplace/court_codes.txt'
     if profession == 'prosecutors':
         parquet = True
-        units_hierarchical = 'prep/units/parquets_hierarchical.txt'
-        units_codes = 'prep/units/parquet_codes.txt'
+        units_hierarchical = 'preprocess/workplace/parquets_hierarchical.txt'
+        units_codes = 'preprocess/workplace/parquet_codes.txt'
 
     units = {}
     with open(units_hierarchical) as ch:

@@ -6,7 +6,7 @@ import matplotlib.ticker as ticker
 from describe import descriptives
 
 
-def executori_describe(in_file_path, out_directory, start_year, end_year):
+def executori_describe(in_file_path, out_directory, start_year, end_year, profession):
     """
     Generate basic descriptives for executori judecătoreşti / judicial debt collectors, and write them to disk.
 
@@ -14,6 +14,7 @@ def executori_describe(in_file_path, out_directory, start_year, end_year):
     :param out_directory: directory where the descriptives files will live
     :param start_year: first year we're considering
     :param end_year: last year we're considering
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return: None
     """
 
@@ -23,13 +24,11 @@ def executori_describe(in_file_path, out_directory, start_year, end_year):
         table = list(reader)
 
     # get basic descriptives
-
-    # figure 1, evolution of percent female
-
-    # figure 1, probability of retirement and entry, by gender
+    cohort_metrics = descriptives.pop_cohort_counts(table, start_year, end_year, profession, cohorts=False, entry=True)
+    [print(cm) for cm in cohort_metrics['grand_total'].items()]
 
 
-# TODO fill out the skeleton
+# TODO fill out specific descriptive functions for each project
 
 
 def describe(profession, source_data, start_year, end_year, prosecs=False):

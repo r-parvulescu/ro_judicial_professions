@@ -112,7 +112,8 @@ def add_workplace_profile(person_period_table, profession):
 
     # add the workplace profile and level to each person-period
     for row in person_period_table:
-        ppt_with_wp.append(row + workplace.get_workplace_profile(row[2], workplace_codes_dict))  # workplace = row[2]
+        ppt_with_wp.append(
+            row[:6] + workplace.get_workplace_profile(row[4], workplace_codes_dict))  # workplace = row[4]
 
     return ppt_with_wp
 
