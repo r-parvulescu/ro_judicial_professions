@@ -5,6 +5,8 @@ Functions for calculating counts of different mobility events, across different 
 from operator import itemgetter
 import itertools
 import copy
+import natsort
+from describe import helpers
 
 
 def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohorts=True, unit_type=None, entry=True):
@@ -36,9 +38,9 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
 
     # if we have units, initialise a dict of years for each unit
     if unit_type:
-        unit_col_idx = get_header(profession).index(unit_type)
+        unit_col_idx = helpers.get_header(profession).index(unit_type)
         units = {person_year[unit_col_idx] for person_year in person_year_table}
-        pop_counts.update({unit: metrics_dict(start_year, end_year) for unit in units})
+        pop_counts.update({unit: metrics_dict(start_year, end_year) for unit in natsort.natsorted(list(units))})
 
     # make an identical dict for cohorts
     cohort_counts = copy.deepcopy(pop_counts)
@@ -79,7 +81,7 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
     """
 
     # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
-    dict_row = row_to_dict(row, profession)
+    dict_row = helpers.row_to_dict(row, profession)
     gender = dict_row['sex']
     year = int(dict_row['an'])
     unit = dict_row[unit_type] if units else None
@@ -127,10 +129,11 @@ def update_cohort_of_population(cohorts_dict, population_dict, entry=True, units
     NB: for entry cohorts, we compare cohort sizes to all people in the PREVIOUS year. For exit cohorts, we
         compare cohort sizes to all people in the CURRENT year.
 
-    :param cohorts_dict:
-    :param population_dict:
-    :param entry:
-    :param units:
+    :param cohorts_dict: a dictionary of cohorts, where each key is a year and values are metrics for that cohort
+    :param population_dict: a dictionary for the whole population, where each key is a year, and values are metrics
+                            for all population members for that year
+    :param entry: bool, True if we're getting data for entry cohorts, False if for exit cohorts
+    :param units: a set of unique units of a certain type, e.g. towns
     :return: None
     """
     for year in cohorts_dict['grand_total']:
@@ -165,37 +168,9 @@ def metrics_dict(start_year, end_year):
     :param end_year: int, year we stop looking at
     :return: dict
     """
-    m_dict = {year: {'f': 0, 'm': 0, 'dk': 0, 'total_size': 0, 'chrt_prcnt_of_pop': 0, 'percent_female': 0, }
+    m_dict = {year: {'f': 0, 'm': 0, 'dk': 0, 'total_size': 0, 'chrt_prcnt_of_pop': 0, 'percent_female': 0}
               for year in range(start_year, end_year + 1)}
     return m_dict
-
-
-def row_to_dict(row, profession):
-    """
-    Makes a dict by mapping list values to a list of keys, which vary by profession.
-    :param row: a list
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: dict
-    """
-    keys = get_header(profession)
-    return dict(zip(keys, row))
-
-
-def get_header(profession):
-    """
-    Different professions have different information, so the headers need to change accordingly.
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: header, as list
-    """
-
-    if profession == 'judges' or profession == 'prosecutors':
-        headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
-                   "ca cod", "trib cod", "jud cod", "nivel"]
-    else:
-        headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an",
-                   "camera", 'localitatea', 'stagiu', 'altele']
-
-    return headers
 
 
 def cohort_name_lists(person_year_table, start_year, end_year):
