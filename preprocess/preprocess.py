@@ -50,21 +50,33 @@ def preprocess(in_directory, out_path, std_log_path, pids_log_path, profession):
         year_sampled_from_months = sample.person_years(ppts['month'][0], sm, change_dict)
         ppts['year'][0].extend(year_sampled_from_months)
 
-    # run name standardiser on the combined table
-    year_range, year = 30, True
-    ppts['year'][0] = standardise.clean(ppts['year'][0], change_dict, year_range, year, profession)
-    standardise.make_log_file(profession, change_dict, std_log_path)
+    # reshape the notaries table from person to person-years
+    # standardisation, deduplication, assigning person-ids, can all be ignored for notaries; just add gender info
+    if profession == 'notaries':
+        # reshape
+        ppts['year'][0] = reshape_to_person_years(ppts['year'][0])
+        # add gender column; py = person-year; py[3] == given names
+        # load gender dict
+        gender_dict = gender.get_gender_dict()
+        ppts['year'][0] = [py[:4] + [gender.get_gender(py[3], py, gender_dict)] + py[4:] for py in ppts['year'][0]]
 
-    # add gender and row id
-    ppts['year'][0] = add_rowid_gender(ppts['year'][0])
+    else:  # all other professions already come in person-year format
 
-    # if we're dealing with judges or prosecutors, add workplace codes
-    if profession == 'judges' or profession == 'prosecutors':
-        ppts['year'][0] = add_workplace_profile(ppts['year'][0], profession)
+        # run name standardiser on the combined table
+        year_range, year = 30, True
+        ppts['year'][0] = standardise.clean(ppts['year'][0], change_dict, year_range, year, profession)
+        standardise.make_log_file(profession, change_dict, std_log_path)
 
-    # remove overlaps (i.e. when two people are in the same place at once), interpolate years (when they're missing
-    # for spurious reasons) and add unique IDs
-    ppts['year'][0] = pids.pids(ppts['year'][0], profession, pids_log_path)
+        # add gender and row id
+        ppts['year'][0] = add_rowid_gender(ppts['year'][0])
+
+        # if we're dealing with judges or prosecutors, add workplace codes
+        if profession == 'judges' or profession == 'prosecutors':
+            ppts['year'][0] = add_workplace_profile(ppts['year'][0], profession)
+
+        # remove overlaps (i.e. when two people are in the same place at once), interpolate years (when they're missing
+        # for spurious reasons) and add unique IDs
+        ppts['year'][0] = pids.pids(ppts['year'][0], profession, pids_log_path)
 
     # write the preprocessed table to disk
     with open(out_path, 'w') as out_file:
@@ -74,20 +86,57 @@ def preprocess(in_directory, out_path, std_log_path, pids_log_path, profession):
         [writer.writerow(row) for row in sorted(ppts['year'][0], key=operator.itemgetter(1))]  # sort by unique ID
 
 
+def reshape_to_person_years(person_table):
+    """
+    Takes a table of persons (with columns for entry and exit year) and reshapes it to a table of person-years.
+
+    NB: this function assumes that no details (notably name and place of practice) change from the time when the
+        person entered the profession to when they left
+
+    NB: header for person-table is [nume, prenume, camera, localitatea, intrat, ieşit]
+
+    :param person_table:
+    :return:
+    """
+
+    # initialise a list of person-years
+    person_years = []
+
+    # the last year before right censor
+    max_year = max({int(row[4]) for row in person_table})
+
+    # each person is a row -- so give each row/person a unique, person-level ID
+    pt_with_pids = [[idx] + row for idx, row in enumerate(person_table)]
+
+    # for each person
+    for person in pt_with_pids:
+        entry_year = int(person[5])  # entry year == person[5]
+
+        # if departure year is '-88', observation was right censored; set departure year to max year
+        exit_year = max_year if str(person[6]) == '-88' else int(person[6])  # exit year == person[6]
+
+        # for each year in the range from entry year to exit year, add one person-year
+        [person_years.append(person[:3] + [i] + person[3:5]) for i in range(entry_year, exit_year + 1)]
+
+    # give every person-year row a unique ID
+    py_with_row_ids = [[idx] + row for idx, row in enumerate(person_years)]
+
+    return py_with_row_ids
+
+
 def add_rowid_gender(person_period_table):
     """
     Add columns for row ID, gender and workplace profile to the person-period table.
     :param person_period_table: a person-period table, as a list of lists
     :return: a person-period table (as list of lists) with new columns
     """
-
-    # load gender dictionary
+    # load gender dict
     gender_dict = gender.get_gender_dict()
 
     # initialise the person-period table with columns for row IDs and gender
     with_new_cols = []
 
-    # add columns for person gender and unit profile
+    # assign gender and row ID for every person-year
     for idx, row in enumerate(person_period_table):
         gend = gender.get_gender(row[1], row, gender_dict)
         new_row = [idx] + row[:2] + [gend] + row[2:]
@@ -130,6 +179,7 @@ def get_header(profession):
                'prosecutors': ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
                                "ca cod", "trib cod", "jud cod", "nivel"],
                'executori': ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an",
-                             "camera", 'localitatea', 'stagiu', 'altele']}
+                             "camera", 'localitatea', 'stagiu', 'altele'],
+               'notaries': ["cod rând", "cod persoană", "nume", "prenume", "sex", "an", "camera", 'localitatea']}
 
     return headers[profession]

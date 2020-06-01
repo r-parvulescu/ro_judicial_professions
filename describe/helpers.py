@@ -11,9 +11,11 @@ def get_header(profession):
     if profession == 'judges' or profession == 'prosecutors':
         headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "instituţie", "an",
                    "ca cod", "trib cod", "jud cod", "nivel"]
-    else:
+    elif profession == 'executori':
         headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an",
                    "camera", 'localitatea', 'stagiu', 'altele']
+    else:  # profession == 'notaries'
+        headers = ["cod rând", "cod persoană", "nume", "prenume", "sex", "an", "camera", 'localitatea']
 
     return headers
 

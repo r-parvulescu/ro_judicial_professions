@@ -178,7 +178,8 @@ def career_movements_table(person_year_table, profession, unit_type, out_dir):
     # get the code for the Bucharest unit, given the unit type and the profession
     bucuresti_codes = {'judges': {'ca cod': 'CA4', 'trib cod': 'TB9'},
                        'prosecutors': {'ca cod': 'PCA4', 'trib cod': 'PTB9'},
-                       'executori': {'camera': 'BUCUREŞTI', 'localitatea': "BUCUREŞTI"}}
+                       'executori': {'camera': 'BUCUREŞTI', 'localitatea': 'BUCUREŞTI'},
+                       'notaries': {'camera': 'BUCUREŞTI', 'localitatea': 'BUCUREŞTI'}}
 
     buc_code = bucuresti_codes[profession][unit_type]
 

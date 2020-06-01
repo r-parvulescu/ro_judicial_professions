@@ -8,8 +8,8 @@ import string
 
 # GENERIC HELPERS #
 
-def pre_clean(text, parquet):
-    """standardise text by transforming string variants to one version"""
+def doc_pre_clean(text, parquet):
+    """standardise text from .doc file by transforming string variants to one version"""
     text = space_name_replacer(text, court_sectors_buc_transdict)  # Bucharest sectors, courts
     if parquet:
         text = space_name_replacer(text, parquet_sectors_buc_transdict)  # Bucharest sectors, parquets
@@ -20,6 +20,25 @@ def pre_clean(text, parquet):
                                          "Ů": "Ţ", "ﾞ": "Ţ", "’": "Ţ", ";": "Ş", "Ř": "Ţ", "]": ' ', '[': ' ',
                                          '_': ' '}))
     return text
+
+
+def str_cln(text):
+    """
+    Apply some common cleaners for personal and area names (e.g. towns)
+    NB: NOT for workplace names, these must include punctuation since they're street addresses
+    :param text: string
+    :return: cleaned string
+    """
+
+    text = text.upper()
+    # use Romanian contemporary orthographic convention: replace "Î" in the middle of words with "Â"
+    text = re.sub(r'\BÎ+\B', r'Â', text)
+    # use cedilla diacritics
+    text = text.replace('Ț', 'Ţ').replace('Ș', 'Ş')
+    # remove punctuation
+    text = text.translate(str.maketrans(string.punctuation, ' ' * len(string.punctuation)))
+    # return, removing outside spaces and collapsing whitespace to just one space
+    return ' '.join(text.split()).strip()
 
 
 def multiline_name_contractor(people_periods):
@@ -127,7 +146,7 @@ given_name_diacritics_transdict = {
     "RAZVAN": "RĂZVAN", "STANCESCU": "STĂNCESCU", "ENIKO": "ENIKŐ", "MANDICA": "MANDICĂ",
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
-    "SADÎC": 'SADÂC', "JENO": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA"
+    "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA"
 }
 
 
@@ -780,8 +799,8 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     :return: cleaned names
     """
 
-    surnames, given_names, chamber, town = exec_str_cln(surnames), exec_str_cln(given_names), \
-                                           exec_str_cln(chamber), exec_str_cln(town)
+    surnames, given_names, chamber, town = str_cln(surnames), str_cln(given_names), \
+                                           str_cln(chamber), str_cln(town)
 
     # remove a maiden name marker from the surnames
     surnames = surnames.replace("FOSTA", ' ').replace("FOSTĂ", ' ')
@@ -803,25 +822,6 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
 
 executori_surname_transdict = {"MILOS": "MILOŞ", "TALPA": "TALPĂ", "OANA": "OANĂ", "CHERSA": "CHERŞA",
                                "FRINCU": "FRÂNCU"}
-
-
-def exec_str_cln(text):
-    """
-    Apply some common cleaners for executori personal names, town, and chamber names
-    NB: NOT for workplace names, these must include punctuation since they're street addresses
-    :param text: string
-    :return: cleaned string
-    """
-
-    text = text.upper()
-    # use Romanian contemporary orthographic convention: replace "Î" in the middle of words with "Â"
-    text = re.sub(r'\BÎ+\B', r'Â', text)
-    # use cedilla diacritics
-    text = text.replace('Ț', 'Ţ').replace('Ș', 'Ş')
-    # remove punctuation
-    text = text.translate(str.maketrans(string.punctuation, ' ' * len(string.punctuation)))
-    # return, removing outside spaces and collapsing whitespace to just one space
-    return ' '.join(text.split()).strip()
 
 
 def executori_town_exceptions(town, chamber):
@@ -860,3 +860,40 @@ executori_town_transdict = {"SFÂNTU": "SFÂNTU GHEORGHE", "BUZĂULUI": "ÎNTORS
                             "TULCEĂ": "TULCEA", "VIŞEUL DE SUS": "VIŞEU DE SUS", "VĂLENII DE": "VĂLENII DE MUNTE",
                             "ZÂMEŞTI": "ZĂRNEŞTI", "ZĂRNEŞTI SUSPENDAT": "ZĂRNEŞTI", "ÎNTORSURA": "ÎNTORSURA BUZĂULUI",
                             "ŞIMLEU": "ŞIMLEU SILVANIEI", "TÂRGU": "TÂRGU CĂRBUNEŞTI"}
+
+
+# HELPERS FOR NOTARI PUBLICI
+
+def notaries_given_name_correct(given_names):
+    """
+    Corrects typos in given names for notaries.
+
+    :param given_names: string, given name
+    :return: corrected given names, as string
+    """
+
+    given_names = space_name_replacer(given_names, notaries_given_name_transdict)
+    given_names = no_space_name_replacer(given_names, given_name_diacritics_transdict)
+    return given_names
+
+
+notaries_given_name_transdict = {"LULIA": "IULIA", "LBOLYA": "IBOLYA", "LULIAN": "IULIAN", "HORALIU": "HORAŢIU",
+                                 "LOAN": "IOAN", "LULIANA": "IULIANA", "LONUŢ": "IONUŢ", "LOANA": "IOANA",
+                                 "LLEANA": "ILEANA", "LMANUELA": "IMANUELA", "LONELA": "IONELA", "LOSIF": "IOSIF",
+                                 "LVANCA": "IVANCA", "LONEL": "IONEL", "LLIOARA": "ILIOARA", "LUSTINA": "IUSTINA",
+                                 "LULIUS": "IULIUS", "LRINA": "IRINA", "LANINA": "IANINA", "COMELIU": "CORNELIU",
+                                 "LOLANDA": "IOLANDA", "LLIE": "ILIE", "VIAD": 'VLAD', "ANDREL": "ANDREI"}
+
+
+def notaries_town_correct(town):
+    """
+    Correct misspelled town/commune names
+    :param town: string, name of town/comune (localitate)
+    :return: clean place name
+    """
+    corrected_town = key_to_value(town, notaries_town_transdict)
+    return corrected_town
+
+
+notaries_town_transdict = {"DĂRĂŞTI LLFOV": "DĂRĂŞTI ILFOV", "LERNUT": "IERNUT", "LEPUREŞTI": "IEPUREŞTI",
+                           "PODU LLOAIEI": "PODU ILOAIEI"}

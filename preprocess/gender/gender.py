@@ -18,6 +18,7 @@ def get_gender(given_names, row, gender_dict):
     given_names = given_names.split(' ')
     for name in given_names:
         if name not in gender_dict:
+            print("NAME NOT IN GENDER DICT")
             print(row)  # show problem
             return ''
         else:

@@ -67,7 +67,8 @@ def get_header(profession):
 
     headers = {'judges': ["nume", "prenume", "instanță/parchet", "an", "lună"],
                'prosecutors': ["nume", "prenume", "instanță/parchet", "an", "lună"],
-               'executori': ["nume", "prenume", "sediul", "an", "camera", 'localitatea', 'stagiu', 'altele']}
+               'executori': ["nume", "prenume", "sediul", "an", "camera", 'localitatea', 'stagiu', 'altele'],
+               'notaries': ["nume", "prenume", "camera", "localitatea", "intrat", "ieşit"]}
 
     return headers[profession]
 
@@ -98,7 +99,7 @@ def triage(in_file_path, profession):
         [pps[k].extend(v) for k, v in people_periods_dict.items() if v]
 
     if in_file_path[-3:] == 'csv':
-        pps['year'].extend(get_csv_people_periods(in_file_path))
+        pps['year'].extend(get_csv_people_periods(in_file_path, profession))
 
     if in_file_path[-3:] == 'pdf':
         year, month = get_year_month(in_file_path)
@@ -177,13 +178,14 @@ def xlsx_df_cleaners(df):
     return df
 
 
-def get_csv_people_periods(in_file_path):
+def get_csv_people_periods(in_file_path, profession):
     """
     Extract person-years from a csv-file, run data through cleaners, and return list of person-years.
 
     NB: as of 22/02/2020, only data for profession "executori judecătoreşti" are in csv format.
 
     :param in_file_path: string, path to the file holding employment information
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :return: a person-period table, as a list of lists
     """
     # initialise list of person-years
@@ -195,14 +197,33 @@ def get_csv_people_periods(in_file_path):
 
         # clean the rows we already have and dump the clean versions in a new table
         for row in reader:
-            clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
-                                                               row['camera'], row['localitate'])
+            if profession == 'executori':
+                clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
+                                                                   row['camera'], row['localitate'])
 
-            # if there's no info for the workplace, give it the '-88'
-            workplace = row['sediu'].upper() if row['sediu'] else '-88'
+                # if there's no info for the workplace, give it the '-88'
+                workplace = row['sediu'].upper() if row['sediu'] else '-88'
 
-            new_row = list(clean_names[:2]) + [workplace] + [row['an']] + \
-                      list(clean_names[2:]) + [row['stagiu'].upper()] + [row['altele'].upper()]
+                new_row = list(clean_names[:2]) + [workplace] + [row['an']] + \
+                          list(clean_names[2:]) + [row['stagiu'].upper()] + [row['altele'].upper()]
+
+            else:  # profession == 'notaries'
+
+                # clean person and place names
+                surnames, given_names = table_helpers.str_cln(row['nume']), table_helpers.str_cln(row['prenume'])
+                chamber, town = table_helpers.str_cln(row['camera']), table_helpers.str_cln(row['localitatea'])
+
+                # clean up given name and town names
+                given_names = table_helpers.notaries_given_name_correct(given_names)
+                town = table_helpers.notaries_town_correct(town)
+
+                # strip the day and year info from time of entry, keep only year
+                entry_year = row['intrat'].split('.')[-1]
+
+                # if no exit year, mark with '-88'
+                exit_year = row['ieşit'] if row['ieşit'] else '-88'
+
+                new_row = [surnames, given_names, chamber, town, entry_year, exit_year]
 
             person_years.append(new_row)
 
@@ -296,7 +317,7 @@ def get_doc_people_periods(in_file_path, year, month, profession):
     """
     prosecs = True if profession == 'prosecutors' else False
     # extract text, capitalise, and pre-clean
-    text = table_helpers.pre_clean(textract.process(in_file_path).decode('utf-8').upper(), prosecs)
+    text = table_helpers.doc_pre_clean(textract.process(in_file_path).decode('utf-8').upper(), prosecs)
     if get_doc_military_data(text):
         return
     people_periods = []
