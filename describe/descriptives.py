@@ -251,3 +251,45 @@ def brought_in_by_family(person_year_table, start_year, end_year):
             [fullname_with_surname_match[cohort_year].add(fn) for sn in surnames if sn in surnames_in_prior_years]
 
     return fullname_with_surname_match
+
+
+def professional_transition(multiprofessional_person_year_table):
+    """
+    Finds possible name matches between people who retired in year X from profession A, and people who joined
+    professions B, C... in the years from X to X+4, inclusive. In other words, if someone left a profession one year,
+    see if in the next five years they joined any of the other professions.
+
+    :param multiprofessional_person_year_table: a person-year table that covers multiple
+    :return: None
+    """
+
+    # see if people who have left one profession end up in another
+
+    # generally want to err on the side of over-inclusion (false positives) since I'll be looking over every
+    # match anyway
+
+    # initialise a list of cross-professional matches
+
+    # for each profession
+
+    # for each year
+
+    # make a set of all people who retire this year
+
+    # make a set of all people in all other professions who begin their careers in that year
+    # or in following four years (five years total)
+
+    # for each name in my set of retirees
+
+    # see if that name is in the set of other professions
+
+    # match rule: if name is composed of 2+ name components and there's a match with at least two
+    # names of another 2+ name component
+    # optional: restrict matches to those in same appellate area
+
+    # if we have a match, save the match to a match list where you simply write
+    # a tuple: [(full | name, year retire, profession), (full | name, year retire, profession)]
+
+    # save match list to disk for visual inspection inspection
+
+    pass

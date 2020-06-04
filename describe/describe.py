@@ -9,7 +9,7 @@ from describe import descriptives
 from describe import helpers
 
 
-def describe(in_file_path, out_directory, start_year, end_year, unit_type, profession):
+def describe(in_file_path, out_directory, start_year, end_year, profession, unit_type=None):
     """
     Generate basic descriptives , and write them to disk.
 
@@ -18,8 +18,9 @@ def describe(in_file_path, out_directory, start_year, end_year, unit_type, profe
     :param start_year: first year we're considering
     :param end_year: last year we're considering
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :param unit_type: type of unit we want table deaggreagted by, e.g. a table where rows are metrics for each
-                      appellate court region
+    :param unit_type: None or list; if list, each entry is, type of unit we want table deaggreagted by,
+                      e.g. one table where rows are metrics for each appellate court region,
+                           and another where rows are metrics for each hierarchical level of the judicial system
     :return: None
     """
 
@@ -35,69 +36,121 @@ def describe(in_file_path, out_directory, start_year, end_year, unit_type, profe
     entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=True)
     entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=False)
 
-    # make tables for entry and exit cohorts, per year per unit
-    entry_exit_unit_table(table, start_year, end_year, profession, unit_type, out_directory, entry=True)
-    entry_exit_unit_table(table, start_year, end_year, profession, unit_type, out_directory, entry=False)
+    # for prosecutors and judges only
+    if profession == 'prosecutors' or profession == 'judges':
 
-    # make table for extent of career centralisation around capital city, per year per unit
-    career_movements_table(table, profession, unit_type, out_directory)
+        # make table for extent of career centralisation around capital city appellate region, per year per unit
+        career_movements_table(table, profession, "ca cod", out_directory)
+
+        # make tables of total counts per year, per level in judicial hierarchy
+        year_counts_table(table, start_year, end_year, profession, out_directory, unit_type='nivel')
+
+        # make tables for exit cohorts, per year, per gender, per level in judicial hierarchy
+        entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=False, unit_type='nivel')
+
+        for u_t in unit_type:
+            # make tables for entry and exit cohorts, per year per unit type
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_directory, entry=True)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_directory, entry=False)
 
 
-def year_counts_table(person_year_table, start_year, end_year, profession, out_dir):
+def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
     """
-    Makes a table of yearly population counts, and optionally breaks down total counts by unit.
+    Makes a table of yearly population counts, and optionally breaks down total counts by unit_type.
 
     :param person_year_table: a table of person-years, as a list of lists
     :param start_year: int, the first year we consider
     :param end_year: int, the last year we consider
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param out_dir: directory where the table will live
+    :param unit_type: None, or if provided, a string indicating the type of unit (e.g. appellate court region)
     :return: None
     """
 
-    # get year counts
-    year_metrics = descriptives.pop_cohort_counts(person_year_table, start_year, end_year,
-                                                  profession, cohorts=False)
+    if unit_type:
+        out_path = out_dir + profession + '_' + unit_type + '_year_totals.csv'
+        fieldnames = ["unit"] + ["year"] + ["female", "male", "don't know", "total count", "percent female"]
+        year_metrics = descriptives.pop_cohort_counts(person_year_table, start_year, end_year,
+                                                      profession, cohorts=False, unit_type=unit_type)
+    else:
+        out_path = out_dir + profession + '_year_totals.csv'
+        fieldnames = ["year"] + ["female", "male", "don't know", "total count", "percent female"]
+        year_metrics = descriptives.pop_cohort_counts(person_year_table, start_year, end_year,
+                                                      profession, cohorts=False)
 
     # make table and write to disk
-    out_path = out_dir + profession + '_year_totals.csv'
     with open(out_path, 'w') as o_file:
-        fieldnames = ["year"] + ["female", "male", "don't know", "total count", "percent female"]
         writer = csv.DictWriter(o_file, fieldnames=fieldnames)
         writer.writeheader()
 
-        for year, metrics in year_metrics['grand_total'].items():
-            writer.writerow({"year": year, "female": metrics['f'], "male": metrics["m"], "don't know": metrics['dk'],
-                             "total count": metrics['total_size'], "percent female": metrics['percent_female']})
+        if unit_type:
+            # iterate over units
+            for unit, years in year_metrics.items():
+                if unit != 'grand_total':
+                    # iterate over years:
+                    for year, metrics in years.items():
+                        if start_year <= int(year) <= end_year - 1:  # stay within bounds
+                            writer.writerow({"unit": unit, "year": year, "female": metrics['f'], "male": metrics["m"],
+                                             "don't know": metrics['dk'], "total count": metrics['total_size'],
+                                             "percent female": metrics['percent_female']})
+
+        else:  # no units, just straight years
+            for year, metrics in year_metrics['grand_total'].items():
+                writer.writerow({"year": year, "female": metrics['f'], "male": metrics["m"],
+                                 "don't know": metrics['dk'], "total count": metrics['total_size'],
+                                 "percent female": metrics['percent_female']})
 
 
-def entry_exit_gender(person_year_table, start_year, end_year, profession, out_dir, entry=True):
+def entry_exit_gender(person_year_table, start_year, end_year, profession, out_dir, entry=True, unit_type=None):
     """
-    Make a table that shows the count and percentage of entry and exit cohorts for each gender.
+    Make a table that shows the count and percentage of entry and exit cohorts for each gender, and for each
+    unit if applicable.
 
     :param person_year_table: a table of person-years, as a list of lists
     :param start_year: int, the first year we consider
     :param end_year: int, the last year we consider
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param out_dir: directory where the table will live
+    :param unit_type: None, or if provided, a string indicating the type of unit (e.g. appellate court region)
     :param entry: bool, True if entry cohorts, False if exit cohorts (i.e. everyone who left in year X)
     :return: None
     """
 
-    # get data on year cohort
-    cohorts = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,
-                                             cohorts=True, unit_type=None, entry=entry)
-    # write table to disc
     type_of_cohort = 'entry' if entry else 'departure'
-    out_path = out_dir + profession + '_' + type_of_cohort + '_cohorts_gender.csv'
-    with open(out_path, 'w') as o_file:
+
+    if unit_type:
+        out_path = out_dir + profession + '_' + unit_type + '_' + type_of_cohort + '_cohorts_gender.csv'
+        fieldnames = ["unit"] + ["year"] + ["female", "male", "don't know", "total count", "percent female"]
+        cohorts = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,
+                                                 cohorts=True, unit_type=unit_type, entry=entry)
+    else:
+        out_path = out_dir + profession + '_' + type_of_cohort + '_cohorts_gender.csv'
         fieldnames = ["year"] + ["female", "male", "don't know", "total count", "percent female"]
+        cohorts = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,
+                                                 cohorts=True, unit_type=None, entry=entry)
+
+    # write table to disc
+    with open(out_path, 'w') as o_file:
         writer = csv.DictWriter(o_file, fieldnames=fieldnames)
         writer.writeheader()
 
-        for year, metrics in cohorts['grand_total'].items():
-            writer.writerow({"year": year, "female": metrics['f'], "male": metrics["m"], "don't know": metrics['dk'],
-                             "total count": metrics['total_size'], "percent female": metrics['percent_female']})
+        # if we're given unit types
+        if unit_type:
+            # iterate over units
+            for unit, years in cohorts.items():
+                if unit != 'grand_total':
+                    # iterate over the years:
+                    for year, metrics in years.items():
+                        if start_year <= int(year) <= end_year - 1:  # stay within bounds
+                            writer.writerow({"unit": unit, "year": year, "female": metrics['f'], "male": metrics["m"],
+                                             "don't know": metrics['dk'], "total count": metrics['total_size'],
+                                             "percent female": metrics['percent_female']})
+
+        else:  # no units, just straight years
+            for year, metrics in cohorts['grand_total'].items():
+                writer.writerow(
+                    {"year": year, "female": metrics['f'], "male": metrics["m"], "don't know": metrics['dk'],
+                     "total count": metrics['total_size'], "percent female": metrics['percent_female']})
 
 
 def entry_exit_unit_table(person_year_table, start_year, end_year, profession, unit_type, out_dir, entry=True):
@@ -121,7 +174,7 @@ def entry_exit_unit_table(person_year_table, start_year, end_year, profession, u
                                                       cohorts=True, unit_type=unit_type, entry=entry)
     # write the table to disk
     type_of_cohort = 'entry' if entry else 'departure'
-    out_path = out_dir + profession + '_' + type_of_cohort + '_rates.csv'
+    out_path = out_dir + profession + '_' + type_of_cohort + '_' + unit_type + '_rates.csv'
     with open(out_path, 'w') as o_file:
         fieldnames = ['unit'] + list(range(start_year, end_year))  # omit last year: all leave in right censor year
         writer = csv.DictWriter(o_file, fieldnames=fieldnames)
@@ -196,7 +249,7 @@ def career_movements_table(person_year_table, profession, unit_type, out_dir):
     unit_col_idx = helpers.get_header(profession).index(unit_type)
 
     # write the table to disk
-    out_path = out_dir + profession + '_career_centralisation.csv'
+    out_path = out_dir + profession + '_' + unit_type + '_career_centralisation.csv'
     with open(out_path, 'w') as o_file:
         fieldnames = ['max career length'] + ['never_left_home', 'buc_never_left',
                                               'non_buc_through_buc', 'non_buc_through_non_buc']
