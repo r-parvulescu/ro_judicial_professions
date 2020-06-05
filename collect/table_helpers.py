@@ -126,7 +126,8 @@ given_name_mistakes_transdict = {
     "DUMIRTU": "DUMITRU", "LOSIF": "IOSIF", "DURNITRU": "DUMITRU", "ISVAN": "ISTVAN", "LULIAN": "IULIAN",
     "GHEROGHE": "GHEORGHE", "IOSN": "IOAN", "CIRPIAN": "CIPRIAN", "LONEL": "IONEL",
     "BAGDAN": "BOGDAN", "GABRIELVALENTIN": "GABRIEL VALENTIN", "FLORINEI": "FLORINEL", "GRIELA": "GABRIELA",
-    "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN"
+    "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN",
+    "ISABERLA": "ISABELA", "ULPIN": "ULPIU", "ALEANDRINA": "ALEXANDRINA", "CARMNEN": "CARMEN"
 }
 
 given_name_diacritics_transdict = {
@@ -521,6 +522,8 @@ def prosec_name_clean(surnames, given_names):
     given_names = no_space_name_replacer(given_names, given_name_diacritics_transdict)
     surnames = no_space_name_replacer(surnames, prosec_surname_transdict)
     surnames, given_names = prosecs_problem_name_handler(surnames, given_names)
+    # remove periods from given names
+    given_names = given_names.replace('.', ' ')
     if len(surnames) > 2:
         # no outside spaces, no space more than one long
         surnames = ' '.join(surnames.split()).strip()
@@ -612,7 +615,6 @@ def multiline_parquet_name(parquet_name):
         return False
 
 
-# I don't use below in this module since it messes up order of operations, used in from_xlsx.py
 def parquet_name_cleaner(parquet_name):
     """returns parquet name that's gone through several cleaners"""
     parquet_name = parquet_name.translate(str.maketrans('', '', string.punctuation))
@@ -620,6 +622,10 @@ def parquet_name_cleaner(parquet_name):
     parquet_name = space_name_replacer(parquet_name, parquet_sectors_buc_transdict)  # parquet = row[2]
     parquet_name = space_name_replacer(parquet_name, parquet_names_transict)
     parquet_name = ' '.join(parquet_name.split()).strip()
+    if 'PARCHETUL DE PE LÂNGĂ ' not in parquet_name:
+        parquet_name = 'PARCHETUL DE PE LÂNGĂ ' + parquet_name
+    if "ŞIMLEU" in parquet_name:
+        parquet_name = "PARCHETUL DE PE LÂNGĂ JUDECĂTORIA ŞIMLEUL SILVANIEI"
     return parquet_name
 
 
@@ -639,7 +645,9 @@ parquet_names_transict = {
     "JUGOJ": "LUGOJ", "ZARNESTI": "ZĂRNEŞTI", "TRIBUNLAUL": "TRIBUNALUL", "INSURĂŢEI": "ÎNSURĂŢEI",
     "REŞITA": 'REŞIŢA', "TÂRNAVENI": "TÂRNĂVENI", "CARAS SEVERIN": "CARAŞ SEVERIN",
     "PROCURATURA JUDEŢEANĂ": "PARCHETUL DE PE LÂNGĂ TRIBUNALUL", "RĂCANI": "RĂCARI", "AGNIŢA": "AGNITA",
-    "PROCURATURA LOCALĂ": "PARCHETUL DE PE LÂNGĂ JUDECĂTORIA"
+    "PROCURATURA LOCALĂ": "PARCHETUL DE PE LÂNGĂ JUDECĂTORIA", "TG SECUIESC": "TÂRGU SECUIESC",
+    "SF GHEORGHE": "SFÂNTU GHEORGHE", "ŞIMLEU SILVANIEI": "ŞIMLEUL SILVANIEI"
+
 }
 
 parquet_sectors_buc_transdict = {
@@ -810,8 +818,7 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     :return: cleaned names
     """
 
-    surnames, given_names, chamber, town = str_cln(surnames), str_cln(given_names), \
-                                           str_cln(chamber), str_cln(town)
+    surnames, given_names, chamber, town = str_cln(surnames), str_cln(given_names), str_cln(chamber), str_cln(town)
 
     # remove a maiden name marker from the surnames
     surnames = surnames.replace("FOSTA", ' ').replace("FOSTĂ", ' ')
@@ -827,8 +834,8 @@ def executori_name_cleaner(surnames, given_names, chamber, town):
     town = executori_town_exceptions(town, chamber)
 
     # return, removing outside spaces and reducing multiple spaces to one
-    return ' '.join(surnames.split()).strip(), ' '.join(given_names.split()).strip(), \
-           ' '.join(chamber.split()).strip(), ' '.join(town.split()).strip()
+    return [' '.join(surnames.split()).strip(), ' '.join(given_names.split()).strip(),
+            ' '.join(chamber.split()).strip(), ' '.join(town.split()).strip()]
 
 
 executori_surname_transdict = {"MILOS": "MILOŞ", "TALPA": "TALPĂ", "OANA": "OANĂ", "CHERSA": "CHERŞA",

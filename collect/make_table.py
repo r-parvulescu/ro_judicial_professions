@@ -98,11 +98,11 @@ def combine_profession_tables(preprocessed_dir):
         [writer.writerow(pers_yr) for pers_yr in combined_professions]
 
 
-def make_pp_table(directories, out_path, profession):
+def make_pp_table(in_dir, out_path, profession):
     """
     Go through employment rolls, extract person-period data, put it into a table, and save as csv.
 
-    :param directories: list of directories where the base data files live
+    :param in_dir: directory where the base data files live
     :param out_path: path where we want the person-period table(s) to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return None
@@ -111,14 +111,18 @@ def make_pp_table(directories, out_path, profession):
     # initialise a dict of person-period tables, according to the time-grain of the table
     # (i.e. person-year vs person-month)
     ppts = {'year': ([], '_year.csv'), 'month': ([], '_month.csv')}
+    directories = os.listdir(in_dir) if profession == 'judges' or profession == 'prosecutors' \
+        else [in_dir]
+    file_count = 0
     for d in directories:
         # if int(re.search(r'([1-2][0-9]{3})', d).group(1)) < 2005:  # to use only pre-2005 data
-        for root, subdirs, files in os.walk(d):
-            for idx, file in enumerate(files):
-                if idx < 100000:
+        dir_abs_path = in_dir + '/' + d
+        for root, subdirs, files in os.walk(dir_abs_path):
+            for file in files:
+                if file_count < 100000:
+                    file_count += 1
                     file_path = root + os.sep + file
-                    print(file_path)
-                    print(idx)
+                    print(file_count, '|', file_path)
                     people_periods_dict = triage(file_path, profession)
                     [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
@@ -148,6 +152,12 @@ def triage(in_file_path, profession):
     .doc files contain employment rolls for magistrates 2005-2019; data from scrape_csm_old.py and freedom of
     information requests
     NB: .doc files refer ONLY to prosecutors and magistrates, and contain ONLY month-level data
+
+    .csv files come from a research assistant who stitched together yearly tables of members from the the national
+    professional associations of notaries and executori judecătoreşţi
+    NB: .csv files refer ONLY to executori judecătoreşti and notaries;
+        for executori we have person-year data for 2001 and 2003-2019
+        for notaries we have person-level data (with entry and exit times, right censored) for 1995-2019
 
     :param in_file_path: string, path to the file holding employment information
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -196,6 +206,7 @@ def get_xlsx_people_periods(in_file_path, profession):
         if 'ANGAJAŢI' not in row[2]:
             unit = None  # easy to trace problem
 
+            surnames, given_names = '', ''
             if profession == 'judges':
                 unit = table_helpers.court_name_cleaner(row[2])
                 surnames, given_names = table_helpers.judge_name_clean(row[0], row[1])
@@ -232,8 +243,6 @@ def get_csv_people_periods(in_file_path, profession):
     """
     Extract person-years from a csv-file, run data through cleaners, and return list of person-years.
 
-    NB: as of 22/02/2020, only data for profession "executori judecătoreşti" are in csv format.
-
     :param in_file_path: string, path to the file holding employment information
     :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :return: a person-period table, as a list of lists
@@ -256,8 +265,7 @@ def get_csv_people_periods(in_file_path, profession):
                 stagiu = row['stagiu'].upper() if row['stagiu'] else '-88'
                 altele = row['altele'].upper() if row['altele'] else '-88'
 
-                new_row = list(clean_names[:2]) + [work_place] + [row['an']] + \
-                          list(clean_names[2:]) + [stagiu, altele]
+                new_row = clean_names[:2] + [work_place, row['an']] + clean_names[2:] + [stagiu, altele]
 
             else:  # profession == 'notaries'
 
