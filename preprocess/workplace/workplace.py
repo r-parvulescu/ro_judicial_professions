@@ -48,6 +48,26 @@ def get_unit_codes(profession):
         return json.load(uc)
 
 
+def get_appellate_code(profession, court_codes, py_as_dict):
+    """
+    Get just the appellate code (e.g. 'CA4') of a certain person-year.
+
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param court_codes: code of each court, as output by get_unit_codes
+    :param py_as_dict: a person-year as a dictionary, e.g. {"name": DERP, "year": 1990, "gender": f}
+    :return: the appellate code, as a string
+    """
+    # if dealing with prosecutors or notaries, translate "camera" (which indicates the
+    # appellate region) to an appellate code, so it's comparable with code for judges and prosecs
+    if profession == 'notaries' or profession == 'executori':
+        appeals_court = 'CURTEA DE APEL ' + py_as_dict['camera']
+        appellate_code = court_codes[appeals_court][0]
+    else:  # profession is 'judges' or 'prosecutors'
+        appellate_code = py_as_dict['ca cod']
+
+    return appellate_code
+
+
 def hierarchy_to_codes(profession):
     """
     Convert a dictionary of institutions with hierarchical structure like this:

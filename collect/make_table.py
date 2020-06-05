@@ -9,15 +9,93 @@ the other data archives.
 
 import os
 import csv
+import itertools
+import operator
 import numpy as np
 import pandas as pd
 import re
 import textract
 import camelot
 from collect import table_helpers
+from preprocess.workplace import workplace
+from describe import helpers
 
 
 # TODO make it work from just memory so you don't have to unzip anything
+
+
+def combine_profession_tables(preprocessed_dir):
+    """
+    Combine the tables from various legal professions into one large table.
+    Updates row ID, unique person ID and adds a field marking the profession in which each person-year belongs.
+
+    NB: assumes the profession tables have unique person IDs and row IDs; in practice, this means preprocessed tables
+
+    NB: assumes that the name of the profession is in the file path.
+
+    :param preprocessed_dir: string, path to directory where the preprocessed tables of the different professions live
+    :return: None
+    """
+
+    # load the court codes dict, we'll need this later
+    court_codes = workplace.get_unit_codes('judges')
+
+    legal_professions = {'notaries', 'executori', 'judges', 'prosecutors'}
+
+    # get all column names/variables that are NOT shared across professions
+    flex_variables = ['trib cod', 'jud cod', 'nivel', 'instituţie', 'sediul, localitatea', 'stagiu', 'altele']
+
+    # initialise the new, empty table
+    combined_professions = []
+
+    # initialise a person ID counter and a person-year counter
+    pid = 0
+    py_id = 0
+
+    # get file paths
+    file_paths = [preprocessed_dir + '/' + f.name for f in os.scandir(preprocessed_dir)
+                  if f.is_file() and 'combined' not in f.name]
+
+    for file in file_paths:
+
+        # get the profession from the file name
+        profession = [prof for prof in legal_professions if prof in file][0]
+
+        # load the person-year table
+        with open(file, 'r') as in_file:
+            table = list(csv.reader(in_file))
+
+            # split up the table into people based on person IDs
+            header = helpers.get_header(profession, 'preprocess')
+            pid_idx = header.index('cod persoană')
+            # NB: start table at index 1 to skip header
+            people = [person for key, [*person] in itertools.groupby(table[1:], key=operator.itemgetter(pid_idx))]
+
+            for person in people:
+                for person_year in person:
+
+                    py_as_dict = helpers.row_to_dict(person_year, profession, 'preprocess')
+                    appellate_code = workplace.get_appellate_code(profession, court_codes, py_as_dict)
+
+                    new_py = {"cod rând": py_id, "cod persoană": pid, "profesie": profession,
+                              "nume": py_as_dict['nume'], "prenume": py_as_dict['prenume'],
+                              "sex": py_as_dict['sex'], "an": py_as_dict['an'], "ca cod": appellate_code}
+
+                    # add remaining variables which vary by profession
+                    # if a person-year doesn't have a certain variable (since wrong profession), put "-88"
+                    for var in flex_variables:
+                        new_py.update({var: py_as_dict[var]}) if var in py_as_dict else new_py.update({var: "-88"})
+
+                    combined_professions.append(new_py)
+
+                    py_id += 1  # increment row ID
+                pid += 1  # increment person ID
+
+    # write table to disk
+    with open(preprocessed_dir + '/combined_professions.csv', 'w') as out_file:
+        writer = csv.DictWriter(out_file, fieldnames=helpers.get_header('all', 'combine'))
+        writer.writeheader()
+        [writer.writerow(pers_yr) for pers_yr in combined_professions]
 
 
 def make_pp_table(directories, out_path, profession):
@@ -33,21 +111,19 @@ def make_pp_table(directories, out_path, profession):
     # initialise a dict of person-period tables, according to the time-grain of the table
     # (i.e. person-year vs person-month)
     ppts = {'year': ([], '_year.csv'), 'month': ([], '_month.csv')}
-    counter = 0
     for d in directories:
         # if int(re.search(r'([1-2][0-9]{3})', d).group(1)) < 2005:  # to use only pre-2005 data
         for root, subdirs, files in os.walk(d):
-            for file in files:
-                counter += 1
-                if counter < 100000:
+            for idx, file in enumerate(files):
+                if idx < 100000:
                     file_path = root + os.sep + file
                     print(file_path)
-                    print(counter)
+                    print(idx)
                     people_periods_dict = triage(file_path, profession)
                     [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
     # write to csv
-    head = get_header(profession)
+    head = helpers.get_header(profession, 'collect')
     for k, v in ppts.items():
         if v[0]:
             unique_row_table = table_helpers.deduplicate_list_of_lists(v[0])
@@ -56,21 +132,6 @@ def make_pp_table(directories, out_path, profession):
                 writer.writerow(head)
                 for row in unique_row_table:
                     writer.writerow(row)
-
-
-def get_header(profession):
-    """
-    Different professions have different information, so the headers need to change accordingly.
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: header, as list
-    """
-
-    headers = {'judges': ["nume", "prenume", "instanță/parchet", "an", "lună"],
-               'prosecutors': ["nume", "prenume", "instanță/parchet", "an", "lună"],
-               'executori': ["nume", "prenume", "sediul", "an", "camera", 'localitatea', 'stagiu', 'altele'],
-               'notaries': ["nume", "prenume", "camera", "localitatea", "intrat", "ieşit"]}
-
-    return headers[profession]
 
 
 def triage(in_file_path, profession):
@@ -102,28 +163,17 @@ def triage(in_file_path, profession):
         pps['year'].extend(get_csv_people_periods(in_file_path, profession))
 
     if in_file_path[-3:] == 'pdf':
-        year, month = get_year_month(in_file_path)
+        year, month = table_helpers.get_year_month(in_file_path)
         if "PMCMA" not in in_file_path:  # military prosecutors, skip for now
             pps['month'].extend(get_pdf_people_periods(in_file_path, year, month))
 
     if in_file_path[-3:] == 'doc':
-        year, month = get_year_month(in_file_path)
+        year, month = table_helpers.get_year_month(in_file_path)
         doc_people_periods = get_doc_people_periods(in_file_path, year, month, profession)
         if doc_people_periods:
             pps['month'].extend(doc_people_periods)
 
     return pps
-
-
-def get_year_month(filepath):
-    """
-    Get the year and month from the file path.
-    :param filepath: string, path to the file
-    :return tuple of (year, month)
-    """
-    year_month = re.search(r'/([0-9].+)/', filepath).group(1)
-    year, month = year_month.split('/')[0], year_month.split('/')[1]
-    return year, month
 
 
 def get_xlsx_people_periods(in_file_path, profession):
@@ -201,11 +251,13 @@ def get_csv_people_periods(in_file_path, profession):
                 clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
                                                                    row['camera'], row['localitate'])
 
-                # if there's no info for the workplace, give it the '-88'
-                workplace = row['sediu'].upper() if row['sediu'] else '-88'
+                # if there's no info for the workplace, stagiu, or altele, give them the '-88'
+                work_place = row['sediu'].upper() if row['sediu'] else '-88'
+                stagiu = row['stagiu'].upper() if row['stagiu'] else '-88'
+                altele = row['altele'].upper() if row['altele'] else '-88'
 
-                new_row = list(clean_names[:2]) + [workplace] + [row['an']] + \
-                          list(clean_names[2:]) + [row['stagiu'].upper()] + [row['altele'].upper()]
+                new_row = list(clean_names[:2]) + [work_place] + [row['an']] + \
+                          list(clean_names[2:]) + [stagiu, altele]
 
             else:  # profession == 'notaries'
 

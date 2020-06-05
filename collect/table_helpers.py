@@ -8,6 +8,17 @@ import string
 
 # GENERIC HELPERS #
 
+def get_year_month(filepath):
+    """
+    Get the year and month from the file path -- applicable to monthly employment rolls from 2017 onwards.
+    :param filepath: string, path to the file
+    :return tuple of (year, month)
+    """
+    year_month = re.search(r'/([0-9].+)/', filepath).group(1)
+    year, month = year_month.split('/')[0], year_month.split('/')[1]
+    return year, month
+
+
 def doc_pre_clean(text, parquet):
     """standardise text from .doc file by transforming string variants to one version"""
     text = space_name_replacer(text, court_sectors_buc_transdict)  # Bucharest sectors, courts
@@ -839,7 +850,7 @@ def executori_town_exceptions(town, chamber):
     return town
 
 
-executori_chamber_transdict = {"CLUJ": "CLUJ NAPOCA", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
+executori_chamber_transdict = {"CLUJ NAPOCA": "CLUJ", "ALBA": "ALBA IULIA", "ARAD": "TIMIŞOARA",
                                "ALBA LULIA": "ALBA IULIA", "BACAU": "BACĂU", "BRASOV": "BRAŞOV",
                                "BUZĂU": "PLOIEŞTI"}
 
