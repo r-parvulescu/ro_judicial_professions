@@ -14,7 +14,7 @@ def get_year_month(filepath):
     :param filepath: string, path to the file
     :return tuple of (year, month)
     """
-    year_month = re.search(r'/([0-9].+)/', filepath).group(1)
+    year_month = re.search(r'/([0-9]{2}.+)/', filepath).group(1)
     year, month = year_month.split('/')[0], year_month.split('/')[1]
     return year, month
 
@@ -161,19 +161,8 @@ given_name_diacritics_transdict = {
     "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA"
 }
 
-
-def deduplicate_list_of_lists(list_of_lists):
-    """
-    Remove duplicate rows from table as list of lists quicker than list comparison: turn all rows to strings,
-    put them in a set, them turn set elements to list and add them all to another list.
-    :param list_of_lists: what it sounds like
-    :return: list of lists without duplicate rows (i.e. inner lists)
-    """
-    uniques = {'|'.join(row) for row in list_of_lists}
-    return [row.split('|') for row in uniques]
-
-
 # HELPERS FOR JUDGES #
+
 
 def update_judge_people_periods(people_periods, unit_lines, text, year, month):
     """

@@ -16,9 +16,9 @@ import pandas as pd
 import re
 import textract
 import camelot
-from collect import table_helpers
+from collect import text_processors
 from preprocess.workplace import workplace
-from describe import helpers
+from helpers import helpers
 
 
 # TODO make it work from just memory so you don't have to unzip anything
@@ -119,7 +119,7 @@ def make_pp_table(in_dir, out_path, profession):
         dir_abs_path = in_dir + '/' + d
         for root, subdirs, files in os.walk(dir_abs_path):
             for file in files:
-                if file_count < 100000:
+                if file_count < 3000:
                     file_count += 1
                     file_path = root + os.sep + file
                     print(file_count, '|', file_path)
@@ -130,7 +130,7 @@ def make_pp_table(in_dir, out_path, profession):
     head = helpers.get_header(profession, 'collect')
     for k, v in ppts.items():
         if v[0]:
-            unique_row_table = table_helpers.deduplicate_list_of_lists(v[0])
+            unique_row_table = helpers.deduplicate_list_of_lists(v[0])
             with open(out_path + v[1], 'w') as outfile:
                 writer = csv.writer(outfile, delimiter=',')
                 writer.writerow(head)
@@ -173,12 +173,12 @@ def triage(in_file_path, profession):
         pps['year'].extend(get_csv_people_periods(in_file_path, profession))
 
     if in_file_path[-3:] == 'pdf':
-        year, month = table_helpers.get_year_month(in_file_path)
+        year, month = text_processors.get_year_month(in_file_path)
         if "PMCMA" not in in_file_path:  # military prosecutors, skip for now
             pps['month'].extend(get_pdf_people_periods(in_file_path, year, month))
 
     if in_file_path[-3:] == 'doc':
-        year, month = table_helpers.get_year_month(in_file_path)
+        year, month = text_processors.get_year_month(in_file_path)
         doc_people_periods = get_doc_people_periods(in_file_path, year, month, profession)
         if doc_people_periods:
             pps['month'].extend(doc_people_periods)
@@ -208,12 +208,12 @@ def get_xlsx_people_periods(in_file_path, profession):
 
             surnames, given_names = '', ''
             if profession == 'judges':
-                unit = table_helpers.court_name_cleaner(row[2])
-                surnames, given_names = table_helpers.judge_name_clean(row[0], row[1])
+                unit = text_processors.court_name_cleaner(row[2])
+                surnames, given_names = text_processors.judge_name_clean(row[0], row[1])
 
             if profession == 'prosecutors':
-                unit = table_helpers.parquet_name_cleaner(row[2])
-                surnames, given_names = table_helpers.prosec_name_clean(row[0], row[1])
+                unit = text_processors.parquet_name_cleaner(row[2])
+                surnames, given_names = text_processors.prosec_name_clean(row[0], row[1])
 
             # month data in the fifth column; if no month data, mark as missing
             if len(row) == 4:
@@ -257,8 +257,8 @@ def get_csv_people_periods(in_file_path, profession):
         # clean the rows we already have and dump the clean versions in a new table
         for row in reader:
             if profession == 'executori':
-                clean_names = table_helpers.executori_name_cleaner(row['nume'], row['prenume'],
-                                                                   row['camera'], row['localitate'])
+                clean_names = text_processors.executori_name_cleaner(row['nume'], row['prenume'],
+                                                                     row['camera'], row['localitate'])
 
                 # if there's no info for the workplace, stagiu, or altele, give them the '-88'
                 work_place = row['sediu'].upper() if row['sediu'] else '-88'
@@ -270,12 +270,12 @@ def get_csv_people_periods(in_file_path, profession):
             else:  # profession == 'notaries'
 
                 # clean person and place names
-                surnames, given_names = table_helpers.str_cln(row['nume']), table_helpers.str_cln(row['prenume'])
-                chamber, town = table_helpers.str_cln(row['camera']), table_helpers.str_cln(row['localitatea'])
+                surnames, given_names = text_processors.str_cln(row['nume']), text_processors.str_cln(row['prenume'])
+                chamber, town = text_processors.str_cln(row['camera']), text_processors.str_cln(row['localitatea'])
 
                 # clean up given name and town names
-                given_names = table_helpers.notaries_given_name_correct(given_names)
-                town = table_helpers.notaries_town_correct(town)
+                given_names = text_processors.notaries_given_name_correct(given_names)
+                town = text_processors.notaries_town_correct(town)
 
                 # strip the day and year info from time of entry, keep only year
                 entry_year = row['intrat'].split('.')[-1]
@@ -306,7 +306,7 @@ def get_pdf_people_periods(in_file_path, year, month):
     tables = camelot.read_pdf(in_file_path, pages='1-end')
     tables = camelot_parser(in_file_path, tables)
 
-    special_parquet = table_helpers.pdf_get_special_parquets(in_file_path)
+    special_parquet = text_processors.pdf_get_special_parquets(in_file_path)
     if tables:
         for t in tables:
             table_as_list = t.df.values.tolist()
@@ -316,9 +316,9 @@ def get_pdf_people_periods(in_file_path, year, month):
                 table_as_list = table_as_list[1:]
 
             for row in table_as_list:
-                parquet = special_parquet if special_parquet else table_helpers.pdf_get_parquet(row)
-                parquet = table_helpers.space_name_replacer(parquet, table_helpers.parquet_sectors_buc_transdict)
-                parquet = table_helpers.space_name_replacer(parquet, table_helpers.parquet_names_transict)
+                parquet = special_parquet if special_parquet else text_processors.pdf_get_parquet(row)
+                parquet = text_processors.space_name_replacer(parquet, text_processors.parquet_sectors_buc_transdict)
+                parquet = text_processors.space_name_replacer(parquet, text_processors.parquet_names_transict)
 
                 # for now, avoid military parquets
                 if parquet != 'SPM':
@@ -326,12 +326,12 @@ def get_pdf_people_periods(in_file_path, year, month):
                     # avoid junk input, e.g. fullname = "A1" in 2017-09-PCA_Timisoara.pdf
                     # also "Post rezervat" in 2018-02-PCA_Cluj.pdf
                     if len(row[0]) > 3 or " rezervat" in row[0]:  # row[0] = fullname
-                        surnames, given_names = table_helpers.get_prosecutor_names(row[0])
+                        surnames, given_names = text_processors.get_prosecutor_names(row[0])
                         # words that sneak in due to improper formatting
                         given_names = given_names.replace("execuţie", '').replace('conducere', '')
                         # some double maiden names are separated by a comma
                         surnames = surnames.replace(',', ' ')
-                        surnames, given_names = table_helpers.prosecs_problem_name_handler(surnames, given_names)
+                        surnames, given_names = text_processors.prosecs_problem_name_handler(surnames, given_names)
                         person_periods.append([surnames, given_names, parquet, year, month])
                     else:
                         print(row[0])
@@ -377,7 +377,7 @@ def get_doc_people_periods(in_file_path, year, month, profession):
     """
     prosecs = True if profession == 'prosecutors' else False
     # extract text, capitalise, and pre-clean
-    text = table_helpers.doc_pre_clean(textract.process(in_file_path).decode('utf-8').upper(), prosecs)
+    text = text_processors.doc_pre_clean(textract.process(in_file_path).decode('utf-8').upper(), prosecs)
     if get_doc_military_data(text):
         return
     people_periods = []
@@ -389,12 +389,12 @@ def get_doc_people_periods(in_file_path, year, month, profession):
         unit_lines = list(filter(None, u.splitlines()))
         if len(unit_lines) > 1:
             if prosecs:
-                table_helpers.update_prosec_people_periods(people_periods, unit_lines, split_mark, year, month)
+                text_processors.update_prosec_people_periods(people_periods, unit_lines, split_mark, year, month)
             else:
-                table_helpers.update_judge_people_periods(people_periods, unit_lines, text, year, month)
-    people_periods = table_helpers.multiline_name_contractor(people_periods)
+                text_processors.update_judge_people_periods(people_periods, unit_lines, text, year, month)
+    people_periods = text_processors.multiline_name_contractor(people_periods)
     if prosecs:
-        people_periods = table_helpers.prosec_multiline_name_catcher(people_periods)
+        people_periods = text_processors.prosec_multiline_name_catcher(people_periods)
     return people_periods
 
 

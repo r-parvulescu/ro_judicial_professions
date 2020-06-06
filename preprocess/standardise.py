@@ -4,10 +4,12 @@ Functions for cleaning up irregularities in the data.
 
 import csv
 import json
+import pandas as pd
 import itertools
+import Levenshtein
 from operator import itemgetter
 from datetime import datetime
-from preprocess import helpers
+from helpers import helpers
 
 
 def clean(ppt, change_dict, range_years, year, profession):
@@ -493,7 +495,7 @@ def standardise_long_full_names(person_period_table, change_dict, time):
 
     # if full names differ by 1 character and at least one surname has 4+ letters (avoids MOS --> POP situations),
     # use the version that appears more often
-    fns_1apart = helpers.pairwise_ldist(set(full_names), 1)
+    fns_1apart = pairwise_ldist(set(full_names), 1)
     for fn_pair in fns_1apart:
         if len(fn_pair[0].split(' | ')[0]) > 3:
             if fullname_freqs[fn_pair[0]] >= fullname_freqs[fn_pair[1]]:
@@ -515,6 +517,25 @@ def standardise_long_full_names(person_period_table, change_dict, time):
         change_dict[time]['standardise_long_full_names'][k] = v
 
     return helpers.deduplicate_list_of_lists(standardised_names_table)
+
+
+def pairwise_ldist(strings_iter, lev_dist, sort_key=None):
+    """
+    :param strings_iter: iterable (e.g. set, list) of strings
+    :param lev_dist: int indicating the desired Levenshtein distance
+    :param sort_key: the key for sorting the list of tuples; if None, sorts by first tuple entry
+    :return list of 2-tuples of full names lev_dist apart, alphabetically sorted by first name in tuple
+    NB: pairwise comparison is lower triangular, no diagonals
+     """
+
+    list_of_tuples_ldist_apart = list(filter(None, [(x, y) if 0 < Levenshtein.distance(x, y) <= lev_dist else ()
+                                                    for i, x in enumerate(strings_iter)
+                                                    for j, y in enumerate(strings_iter) if i > j]))
+
+    if sort_key is None:
+        return sorted(list_of_tuples_ldist_apart)
+    else:
+        return sorted(list_of_tuples_ldist_apart, key=sort_key)
 
 
 def many_name_share(person_period_table, change_dict, time):
@@ -695,7 +716,9 @@ prosecutors_fn_transdict = {"ARUNCUTEAN | IONELIA": "ARUNCUTEAN | IONELA", "BALO
                             "TĂNASE | FLORIN": "TĂNASE | FLORIAN", "TĂNASE | DOINIŢA": "TĂNASĂ | DOINIŢA",
                             "VASILACHI | LUMINIŢA": "VASILACHE | LUMINIŢA", "VEŞTEMEAN | IOAN": "VEŞTEMEAN | ION",
                             "VLADU | MINODORA": "VLAD | MINODORA", "VOICU | ADRIAN": "VOICU | ADRIANA",
-                            "VORONEANU | DENISIA": "VORONEANU | DENISA", "ŞANDRU | ION": "ŞANDRU | IOAN"}
+                            "VORONEANU | DENISIA": "VORONEANU | DENISA", "ŞANDRU | ION": "ŞANDRU | IOAN",
+                            "GHIMIŞ ROATEŞ | ANTON MIRON": "GHIMIŞ ROATEŞ | ADRIAN MIRON"
+                            }
 
 executori_fn_transdict = {
     "ILIE | PANAITE": "PANAITE | ILIE", "DUMITRU | SAHLIAN": "SAHLIAN | DUMITRU",
@@ -717,7 +740,7 @@ executori_fn_transdict = {
     "ANDREICA | FLAVIUS VICENŢIU": "ANDREICA | FLAVIUS INOCENŢIU", "VOICAN | MĂDĂLINA": "AVRAM VOICAN | MĂDĂLINA",
     "PALEA | VALERIAN": "PALEA | MARIUS VALENTIN", "SOLOMON | NECULAI": "SOLOMON | NICOLAE",
     "TATU | ANCA": "BORCEA TATU | ANCA", "BALACIU | TITI": "BALACI | TITI", "CHIRIAC | NICOLAE": "CHIRIAC | NICOLAIE",
-    "GUŢĂ | ALEXANDRU GHEORGHE": "GUŢĂ | ALEXANDRU GEORGE", "ION | GEORGE MIHAIL": "ION | GHEORGHE MIHAIL"
+    "GUŢĂ | ALEXANDRU GHEORGHE": "GUŢĂ | ALEXANDRU GEORGE", "ION | GEORGE MIHAIL": "ION | GHEORGHE MIHAIL",
 }
 
 
@@ -726,3 +749,41 @@ executori_fn_transdict = {
 #   d) need to do another full-name extend on the full sorted only by first full name, and given name sorted only
 #      by first given name; in both cases, need to put a limit in for year jumps, i.e. stop if year jumps
 #     e.g. see the problem with RISTEA | RAMONA vs RISTEA IOANA RAMONA
+
+
+# VISUAL INSPECTION UTILITIES #
+
+def print_full_names_ldist_apart(csv_file_path, l_dist, year_range=False):
+    """
+    Prints out a sorted column of all full names that are ldist or more apart in terms of Levenshtein distance.
+    This helps weed out typos by hand that are too subtle to leave to automated functions.
+    :param csv_file_path: string, file path to a csv file
+    :param l_dist: int, maximum Levenshtein/edit distance between two full names that you want to compare
+    :param year_range: bool, True if we want each to see the range of years for each full name of a pair l_dist apart
+    :return: None
+    """
+    df = pd.read_csv(csv_file_path)
+    table = df.values.tolist()
+    unique_fns = set(row[1] + ' | ' + row[2] for row in table)  # row[1] = surnames, row[2] = given names
+    full_name_ldist = pairwise_ldist(unique_fns, l_dist)
+
+    print('NUMBER OF FULL NAME PAIRS %s LEVENSTHEIN DISTANCE APART: %s' % (l_dist, len(full_name_ldist)))
+
+    # if we want to see the first and last years in which a full name appears
+    # NB: this doesn't account for gaps in the middle
+    if year_range:
+        # make a list of tuples, (full name, year), then sort it by full name and year (in that order)
+        full_names_with_years = sorted([(row[1] + ' | ' + row[2], str(row[5])) for row in table],  # row[5] = year
+                                       key=itemgetter(0, 1))
+
+        # make a dict where 'key = full name' and 'value = first year - last year'
+        fns_ranges = {full_name: fn_group[0][1] + '-' + fn_group[-1][1] for full_name, [*fn_group]
+                      in itertools.groupby(full_names_with_years, key=itemgetter(0))}
+
+        #  print out each the full name pair that is l_dist apart, with each full name's year range
+        for fn_pair in full_name_ldist:
+            print('"%s": "%s"' % (fn_pair[0], fn_pair[1]))
+            print(fns_ranges[fn_pair[0]], fns_ranges[fn_pair[1]])
+
+    else:
+        [print(full_name_pair) for full_name_pair in full_name_ldist]

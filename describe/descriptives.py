@@ -6,7 +6,7 @@ from operator import itemgetter
 import itertools
 import copy
 import natsort
-from describe import helpers
+from helpers import helpers
 
 
 def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohorts=True, unit_type=None, entry=True):
@@ -38,7 +38,7 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
 
     # if we have units, initialise a dict of years for each unit
     if unit_type:
-        unit_col_idx = helpers.get_header(profession).index(unit_type)
+        unit_col_idx = helpers.get_header(profession, 'preprocess').index(unit_type)
         units = {person_year[unit_col_idx] for person_year in person_year_table}
         pop_counts.update({unit: metrics_dict(start_year, end_year) for unit in natsort.natsorted(list(units))})
 
@@ -81,7 +81,7 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
     """
 
     # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
-    dict_row = helpers.row_to_dict(row, profession)
+    dict_row = helpers.row_to_dict(row, profession, 'preprocess')
     gender = dict_row['sex']
     year = int(dict_row['an'])
     unit = dict_row[unit_type] if units else None
@@ -253,13 +253,16 @@ def brought_in_by_family(person_year_table, start_year, end_year):
     return fullname_with_surname_match
 
 
-def professional_transition(multiprofessional_person_year_table):
+def professional_transition(multiprofessional_person_year_table, start_year, end_year):
     """
     Finds possible name matches between people who retired in year X from profession A, and people who joined
     professions B, C... in the years from X to X+4, inclusive. In other words, if someone left a profession one year,
     see if in the next five years they joined any of the other professions.
 
-    :param multiprofessional_person_year_table: a person-year table that covers multiple
+    NB: need to choose carefully the start and end years since for a number of year
+
+    :param multiprofessional_person_year_table: a person-year table that covers multiple professions
+    :param start_year: int, first year we consider
     :return: None
     """
 

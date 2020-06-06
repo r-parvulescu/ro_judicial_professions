@@ -6,7 +6,7 @@ import csv
 import itertools
 import operator
 from describe import descriptives
-from describe import helpers
+from helpers import helpers
 
 
 def describe(in_file_path, out_directory, start_year, end_year, profession, unit_type=None):
@@ -246,7 +246,7 @@ def career_movements_table(person_year_table, profession, unit_type, out_dir):
     fill_time_bands(people, time_length_bands, profession)
 
     # get the column index where information on our unit type (e.g. appellate court region) resides
-    unit_col_idx = helpers.get_header(profession).index(unit_type)
+    unit_col_idx = helpers.get_header(profession, 'preprocess').index(unit_type)
 
     # write the table to disk
     out_path = out_dir + profession + '_' + unit_type + '_career_centralisation.csv'
@@ -349,7 +349,7 @@ def fill_time_bands(list_of_persons, time_length_bands, profession):
     """
 
     for person in list_of_persons:
-        start_year_of_career = helpers.row_to_dict(person[0], profession)
+        start_year_of_career = helpers.row_to_dict(person[0], profession, 'preprocess')
         year = start_year_of_career['an']
         for band in time_length_bands:
             # NB: since the right censor year varies, not all time bands will contain ten or fifteen year careers
