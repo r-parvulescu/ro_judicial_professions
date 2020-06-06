@@ -9,7 +9,7 @@ from describe import descriptives
 from helpers import helpers
 
 
-def describe(in_file_path, out_directory, start_year, end_year, profession, unit_type=None):
+def describe(in_file_path, out_directory, profession, start_year, end_year, unit_type=None):
     """
     Generate basic descriptives , and write them to disk.
 
