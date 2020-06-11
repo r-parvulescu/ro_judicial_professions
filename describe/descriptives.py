@@ -266,35 +266,39 @@ def brought_in_by_family(person_year_table, start_year, end_year, profession):
     return fullname_with_surname_match
 
 
-def inter_unit_mobility(person_year_table, profession, unit_type, start_year, end_year):
+def inter_unit_mobility(person_year_table, profession, unit_type):
     """
-    For each year make a dict of interunit mobility table, a square matrix where rows are sending unit and columns are
-    receiving unit -- diagonals are "did not move".
+    For each year make a dict of interunit mobility where first level keys years, second level keys are sending units,
+    and third level keys are receiving units. The base values are counts of movement; diagonals are "did not move".
+    The dict form is:
 
-    The output table should be composed of year sub-tables and should look something like this:
+    {'year1':
+        {'sending unit1': {receiving unit1: int, receiving unit2: int,...},
+         'sending unit2': {receiving unit1: int, receiving unit2: int,...},
+         ...
+         },
+     'year2':
+        {'sending unit1': {receiving unit1: int, receiving unit2: int,...},
+         'sending unit2': {receiving unit1: int, receiving unit2: int,...},
+         ...
+         },
+     ...
+    }
 
-    YEAR 1
-                UNIT 1  UNIT 2  UNIT 3
-        UNIT 1    2       0       1
-        UNIT 2    6       10      0
-        UNIT 3    3       4       4
+    :param person_year_table: a table of person-years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param unit_type: string, type of the unit as it appears in header of person_year_table
 
-
-    YEAR 2
-
-                UNIT 1  UNIT 2  UNIT 3
-        UNIT 1    0        3       5
-        UNIT 2    10       5       3
-        UNIT 3    2        5       1
-
-    :param person_year_table:
-    :param profession:
-    :param unit_type:
-    :return:
+    :return: a multi-level dict
     """
+
     pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
     year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
     unit_col_idx = helpers.get_header(profession, 'preprocess').index(unit_type)
+
+    # get start and end year of all observations
+    person_year_table.sort(key=itemgetter(year_col_idx))
+    start_year, end_year = int(person_year_table[0][year_col_idx]), int(person_year_table[-1][year_col_idx])
 
     # the sorted list of unique units
     units = sorted(list({person_year[unit_col_idx] for person_year in person_year_table}))
@@ -314,15 +318,19 @@ def inter_unit_mobility(person_year_table, profession, unit_type, start_year, en
     for person in people:
         # look through each of their person-years
         for idx, person_year in enumerate(person):
-            # compare this year and last year's units
-            if idx > 0:
-                sender = person[idx - 1][unit_col_idx]
-                receiver = person_year[unit_col_idx]
+            # compare this year and next year's units
+            if idx < len(person) - 1:
+                sender = person_year[unit_col_idx]
+                receiver = person[idx + 1][unit_col_idx]
+                # the transition year is, by convention, the sender's year
+                transition_year = int(person_year[year_col_idx])
                 # if they're different, we have mobility
                 if sender != receiver:
-                    # the transition year is, by convention, the sender's year
-                    transition_year = person_year[year_col_idx]
                     # increment the sender-receiver cell in the appropriate year
                     mobility_dict[transition_year][sender][receiver] += 1
+                else:  # they didn't move, increment the diagonal
+                    mobility_dict[transition_year][sender][sender] += 1
+            else:  # last observation, movement is out, which we count in other places, so ignore
+                pass
 
     return mobility_dict

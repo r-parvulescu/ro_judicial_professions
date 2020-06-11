@@ -5,6 +5,7 @@ Functions for creating descriptive tables and graphs.
 import csv
 import itertools
 import operator
+import natsort
 from describe import descriptives
 from helpers import helpers
 
@@ -47,6 +48,9 @@ def describe(in_file_path, out_directory, profession, start_year, end_year, unit
 
         # make tables for exit cohorts, per year, per gender, per level in judicial hierarchy
         entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=False, unit_type='nivel')
+
+        # make table for mobility between appellate court regions
+        inter_unit_mobility_table(table, out_directory, profession, 'ca cod')
 
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type
@@ -494,7 +498,6 @@ def inter_professional_transition_table(infile_path, out_dir, year_window):
             writer.writerow([year])
             writer.writerow([''] + profs)
             for p in profs:
-                # NB: there are four professions
                 writer.writerow([p] + [exit_professions[p][profs[i]] for i in range(0, len(profs))])
             writer.writerow(['\n'])
 
@@ -581,18 +584,17 @@ def name_match(fullname_1, fullname_2):
         return False
 
 
-def interunit_mobility_table(person_year_table, profession, unit_type):
+def inter_unit_mobility_table(person_year_table, out_dir, profession, unit_type):
     """
-        For each year make a dict of interunit mobility table, a square matrix where rows are sending unit and columns are
-    receiving unit -- diagonals are "did not move".
-
-    The output table should be composed of year sub-tables and should look something like this:
+    Write to disk a table of subtables, where each subtable is a square matrix where rows are sending units and
+    columns are receiving units -- diagonals are "did not move". The output should look something like this:
 
     YEAR 1
                 UNIT 1  UNIT 2  UNIT 3
         UNIT 1    2       0       1
         UNIT 2    6       10      0
         UNIT 3    3       4       4
+        ...
 
 
     YEAR 2
@@ -601,9 +603,27 @@ def interunit_mobility_table(person_year_table, profession, unit_type):
         UNIT 1    0        3       5
         UNIT 2    10       5       3
         UNIT 3    2        5       1
+        ...
 
-    :param person_year_table:
-    :param profession:
-    :param unit_type:
-    :return:
+    ...
+    :param person_year_table: person year table as a list of lists
+    :param out_dir: directory where the inter-unit mobility table(s) will live
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param unit_type: string, type of the unit as it appears in header of person_year_table (e.g. "ca cod")
+    :return: None
     """
+
+    # get the mobility dict
+    mobility_dict = descriptives.inter_unit_mobility(person_year_table, profession, unit_type)
+
+    # and write it to disk as a table of subtables
+    table_out_path = out_dir + unit_type + '_interunit_mobility_tables.csv'
+    with open(table_out_path, 'w') as out_p:
+        writer = csv.writer(out_p)
+        for year, sending_units in mobility_dict.items():
+            units = natsort.natsorted(list(sending_units))
+            writer.writerow([year])
+            writer.writerow([''] + units)
+            for u in units:
+                writer.writerow([u] + [sending_units[u][units[i]] for i in range(0, len(units))])
+            writer.writerow(['\n'])
