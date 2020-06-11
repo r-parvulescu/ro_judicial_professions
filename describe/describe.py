@@ -408,72 +408,97 @@ def inter_professional_transition_table(infile_path, out_dir, year_window):
     :return: None
     """
 
+    # load the multiprofessional person-year table
     with open(infile_path, 'r') as in_file:
-        multiprofessional_person_year_table = list(csv.reader(in_file))[1:]  # skip first line, headers
+        multiprofs_py_table = list(csv.reader(in_file))[1:]  # skip first line, headers
+        # sort by year
+        year_col_idx = helpers.get_header('all', 'combine').index('an')
+        multiprofs_py_table.sort(key=operator.itemgetter(year_col_idx))
 
-    # initialise a list of cross-professional matches
-    cross_prof_matches = []
+    # get start and end year of all observations
+    start_year, end_year = int(multiprofs_py_table[0][year_col_idx]), int(multiprofs_py_table[-1][year_col_idx])
 
-    # for each profession, make a dict that holds a) the names of each year's exit cohorts, and
-    # b) the name of the entry cohorts starting in year X (e.g. 2000) up to year X + year_window (e.g. 2004), inclusive
-    professions_data = professions_yearspans_cohorts(multiprofessional_person_year_table, combined=True)
+    # initialise a list/log of cross-professional matches, so we can eyeball matches for errors
+    cross_prof_match_log = []
 
-    # for each profession, for each year's exit cohort, for each name in that exit cohort
-    # if at least one surname and one given name match between the exitee and the full name of an entrant
-    # within the entry cohorts window of the other professions, add to the cross professional match list as a list
-    # of form [exitee full name, exit year, exit profession, '', entrant full name, entry year, entry profession]
-    for p in professions_data:
-        print(p)
-        other_professions = {prof for prof in professions_data if prof != p}
+    # for each profession get the first and last observation years and the full names of yearly entry and exit cohorts
+    professions_data = professions_yearspans_cohorts(multiprofs_py_table, combined=True)
 
-        for year, names in professions_data[p]['exit'].items():
-            # make a set of tuples, each of the form (surname | given names, entry year, entry profession)
-            # from the exit cohorts of all the other profession, on the time window "year" to "year+4"
+    # initialise a dict (later a set of matrices) where each year is a table, each first-level key is a row,
+    # representing the sending profession, and each second level key is a column, representing the receiving profession;
+    # the base values are counts of how many people went from profession A to B in year X.
+    # make the mobility dict, which later will become a mobility matrix
+    transfers_dict = {}
+    for exit_year in range(start_year, end_year):
+        # the first-level key is the row/sender, the second-level key is the column/receiver
+        professions_dict = {prof: {prof: 0 for prof in professions_data} for prof in professions_data}
+        transfers_dict.update({exit_year: professions_dict})
 
+    # for each profession
+    for sending_profession in professions_data:
+        print(sending_profession)
+        # see what the other professions are
+        other_professions = {prof for prof in professions_data if prof != sending_profession}
+
+        # for each yearly exit cohort
+        for exit_year, names in professions_data[sending_profession]['exit'].items():
+
+            # get a set of all names who joined every other profession on the range "year" to "year + year_window"
+            # e.g. if year == 2000 and year_window == 2, the set includes all entrants in years [2000, 2002]
             other_professions_entrants = set()
             for other_prof in other_professions:
 
                 # don't consider profession Y if we don't have data for it yet
-                if int(year) >= professions_data[other_prof]['start year']:
+                if int(exit_year) >= professions_data[other_prof]['start year']:
 
                     # last_year makes sure that our year window doesn't go out of bounds
-                    last_year = min(int(year) + year_window, professions_data[other_prof]['end year'])
+                    last_year = min(int(exit_year) + year_window, professions_data[other_prof]['end year'])
 
-                    for yr in range(int(year), last_year + 1):
+                    for entry_year in range(int(exit_year), last_year + 1):
                         # not all professions have the same year set
-                        if yr in professions_data[other_prof]['entry']:
+                        if entry_year in professions_data[other_prof]['entry']:
 
-                            for name in professions_data[other_prof]['entry'][yr]:
-                                other_professions_entrants.add((name, yr, other_prof))
+                            for entrant_name in professions_data[other_prof]['entry'][entry_year]:
+                                other_professions_entrants.add((entrant_name, entry_year, other_prof))
 
-            for n in names:  # NB: name format is "SURNAMES | GIVEN NAMES"
-                exitee_surnames = set(n.split(' | ')[0].split(' '))
-                eixtee_given_names = set(n.split(' | ')[1].split(' '))
+            for exitee_name in names:
 
                 # look for name match in set of entrants into other professions, in the specified time window
                 for entrant in other_professions_entrants:
-                    other_name = entrant[0]
-                    entrant_surnames = set(other_name.split(' | ')[0].split(' '))
-                    entrant_given_names = set(other_name.split(' | ')[1].split(' '))
+                    entrant_name, entry_year, entry_profession = entrant[0], entrant[1], entrant[2]
 
-                    # if the names have at least one surname and one given name are shared, save as match
-                    if len(exitee_surnames & entrant_surnames) > 0 \
-                            and len(eixtee_given_names & entrant_given_names) > 0:
-                        cross_prof_matches.append([n, year, p, '', entrant[0], entrant[1], entrant[2]])
+                    # if names match
+                    if name_match(exitee_name, entrant_name):
+                        # add match to log for visual inspection
+                        cross_prof_match_log.append([exitee_name, exit_year, sending_profession, '',
+                                                     entrant_name, entry_year, entry_profession])
 
-    # write the match list to disk for visual inspection
-    out_path = out_dir + 'interprofessional_transitions_' + str(year_window) + '_year_window.csv'
-    with open(out_path, 'w') as out_p:
+                        # increment appropriate cell in the transition dict/table
+                        transfers_dict[exit_year][sending_profession][entry_profession] += 1
+
+    # write the match list log to disk for visual inspection
+    log_out_path = out_dir + 'interprofessional_transitions_' + str(year_window) + '_year_window_match_list_log.csv'
+    with open(log_out_path, 'w') as out_p:
         writer = csv.writer(out_p)
         writer.writerow(["EXITEE NAME", "EXIT YEAR", "EXIT PROFESSION", "",
                          "ENTRANT NAME", "ENTRY YEAR", "ENTRANT PROFESSION"])
-        for match in sorted(cross_prof_matches, key=operator.itemgetter(1)):  # sorted by exit year
+        for match in sorted(cross_prof_match_log, key=operator.itemgetter(1)):  # sorted by exit year
             writer.writerow(match)
 
-    # TODO write out the match list as a log file and write out a separate inter-professional transition
-    #  table for each year
-    #  also eyeball the match list better, there are some false positive you can weed out by tweaking that
-    #  last if condition; also deaggregate transition table by gender
+    # write the transition tables to disk
+    table_out_path = out_dir + 'interprofessional_transitions_' + str(year_window) + '_year_window_matrix.csv'
+    with open(table_out_path, 'w') as out_p:
+        writer = csv.writer(out_p)
+        for year, exit_professions in transfers_dict.items():
+            profs = sorted(list(exit_professions))
+            writer.writerow([year])
+            writer.writerow([''] + profs)
+            for p in profs:
+                # NB: there are four professions
+                writer.writerow([p] + [exit_professions[p][profs[i]] for i in range(0, len(profs))])
+            writer.writerow(['\n'])
+
+    # TODO also deaggregate transition table by gender
 
 
 def professions_yearspans_cohorts(multiprofessional_person_year_table, combined=False):
@@ -512,6 +537,48 @@ def professions_yearspans_cohorts(multiprofessional_person_year_table, combined=
         data_dict.update({prof_name: {'start year': start_year, 'end year': end_year,
                                       'entry': entry_cohorts, 'exit': exit_cohorts}})
     return data_dict
+
+
+def name_match(fullname_1, fullname_2):
+    """
+    Compares two full names and matches if certain match rules (described in comments) are met. The order in which the
+    fullnames are introduced as parameters matters -- the first fullname is, in a sense, the "primary", the "anchor"
+
+    :param fullname_1: str, full name of the form "SURNAMES | GIVEN NAMES"
+    :param fullname_2: str, full name of the form "SURNAMES | GIVEN NAMES"
+    :return: bool, True if match False otherwise
+    """
+
+    # extract surnames and given names from each full name
+    sns_1, gns_1 = set(fullname_1.split(' | ')[0].split(' ')), set(fullname_1.split(' | ')[1].split(' '))
+    sns_2, gns_2 = set(fullname_2.split(' | ')[0].split(' ')), set(fullname_2.split(' | ')[1].split(' '))
+
+    # if one name has at least four components and the other has at least three components,
+    # OR surname_1 contain "POPESCU", which is the single most common Romanian surname
+    if (len(sns_1) + len(gns_1) > 3 and len(sns_2) + len(gns_2) > 2) \
+            or \
+            ("POPESCU" in sns_1 and len(sns_1) + len(gns_1) > 2):
+
+        # the match needs to be at least 2-1 i.e. two surnames and one given name,
+        # or two given names and one surname
+        if (len(sns_1 & sns_2) > 0 and len(gns_1 & gns_2) > 1) \
+                or \
+                (len(sns_1 & sns_2) > 1 and len(gns_1 & gns_2) > 0):
+
+            return True
+
+        else:
+            return False
+
+    # otherwise match if the names (now 3 or less components long, not containing surname "POPESCU"
+    # unless they're two-long) share at least one surname and one given name
+    elif len(sns_1 & sns_2) > 0 \
+            and len(gns_1 & gns_2) > 0:
+
+        return True
+
+    else:
+        return False
 
 
 def interunit_mobility_table(person_year_table, profession, unit_type):
