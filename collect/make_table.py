@@ -24,7 +24,7 @@ from helpers import helpers
 # TODO make it work from just memory so you don't have to unzip anything
 
 
-def combine_profession_tables(preprocessed_dir):
+def combine_profession_tables(preprocessed_dir, out_path):
     """
     Combine the tables from various legal professions into one large table.
     Updates row ID, unique person ID and adds a field marking the profession in which each person-year belongs.
@@ -34,6 +34,7 @@ def combine_profession_tables(preprocessed_dir):
     NB: assumes that the name of the profession is in the file path.
 
     :param preprocessed_dir: string, path to directory where the preprocessed tables of the different professions live
+    "param out_path: str, path where the combined table will live
     :return: None
     """
 
@@ -92,10 +93,12 @@ def combine_profession_tables(preprocessed_dir):
                 pid += 1  # increment person ID
 
     # write table to disk
-    with open(preprocessed_dir + '/combined_professions.csv', 'w') as out_file:
+    with open(out_path, 'w') as out_file:
         writer = csv.DictWriter(out_file, fieldnames=helpers.get_header('all', 'combine'))
         writer.writeheader()
         [writer.writerow(pers_yr) for pers_yr in combined_professions]
+
+    # TODO figure out how to do row deduplication on this thing
 
 
 def make_pp_table(in_dir, out_path, profession):

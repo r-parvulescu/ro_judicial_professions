@@ -384,3 +384,159 @@ def get_time_length_bands(profession):
         time_length_bands = {}
 
     return time_length_bands
+
+
+def inter_professional_transition_table(infile_path, out_dir, year_window):
+    """
+    Finds possible name matches between people who retired in year X from profession A, and people who joined
+    professions B, C... in the years from X to X+4, inclusive. In other words, if someone left a profession one year,
+    see if in the next five years they joined any of the other professions.
+
+    NB: need to choose carefully the start and end years since only for some years do we have overlap between
+        different professions
+
+    NB: this function assumes that each match will be human-checked afterwards. Consequently, it errs on the side
+        of over-inclusion, i.e. prefers false positives.
+
+    :param infile_path: str, path to where a person-year table that covers multiple professions lives
+    :param out_dir: directory where the interprofessional transition table will live
+    :param year_window: int, how many years after exit we look for interprofessional transition;
+                        if year_window = 0, we want only professional transfers in the exit year
+                        if year_window = 3, we want only professional transfers in the exit year and two
+                            consecutive years, e.g. 2000-2002 (the years 2000, 2001, and 2003)
+                        etc.
+    :return: None
+    """
+
+    with open(infile_path, 'r') as in_file:
+        multiprofessional_person_year_table = list(csv.reader(in_file))[1:]  # skip first line, headers
+
+    # initialise a list of cross-professional matches
+    cross_prof_matches = []
+
+    # for each profession, make a dict that holds a) the names of each year's exit cohorts, and
+    # b) the name of the entry cohorts starting in year X (e.g. 2000) up to year X + year_window (e.g. 2004), inclusive
+    professions_data = professions_yearspans_cohorts(multiprofessional_person_year_table, combined=True)
+
+    # for each profession, for each year's exit cohort, for each name in that exit cohort
+    # if at least one surname and one given name match between the exitee and the full name of an entrant
+    # within the entry cohorts window of the other professions, add to the cross professional match list as a list
+    # of form [exitee full name, exit year, exit profession, '', entrant full name, entry year, entry profession]
+    for p in professions_data:
+        print(p)
+        other_professions = {prof for prof in professions_data if prof != p}
+
+        for year, names in professions_data[p]['exit'].items():
+            # make a set of tuples, each of the form (surname | given names, entry year, entry profession)
+            # from the exit cohorts of all the other profession, on the time window "year" to "year+4"
+
+            other_professions_entrants = set()
+            for other_prof in other_professions:
+
+                # don't consider profession Y if we don't have data for it yet
+                if int(year) >= professions_data[other_prof]['start year']:
+
+                    # last_year makes sure that our year window doesn't go out of bounds
+                    last_year = min(int(year) + year_window, professions_data[other_prof]['end year'])
+
+                    for yr in range(int(year), last_year + 1):
+                        # not all professions have the same year set
+                        if yr in professions_data[other_prof]['entry']:
+
+                            for name in professions_data[other_prof]['entry'][yr]:
+                                other_professions_entrants.add((name, yr, other_prof))
+
+            for n in names:  # NB: name format is "SURNAMES | GIVEN NAMES"
+                exitee_surnames = set(n.split(' | ')[0].split(' '))
+                eixtee_given_names = set(n.split(' | ')[1].split(' '))
+
+                # look for name match in set of entrants into other professions, in the specified time window
+                for entrant in other_professions_entrants:
+                    other_name = entrant[0]
+                    entrant_surnames = set(other_name.split(' | ')[0].split(' '))
+                    entrant_given_names = set(other_name.split(' | ')[1].split(' '))
+
+                    # if the names have at least one surname and one given name are shared, save as match
+                    if len(exitee_surnames & entrant_surnames) > 0 \
+                            and len(eixtee_given_names & entrant_given_names) > 0:
+                        cross_prof_matches.append([n, year, p, '', entrant[0], entrant[1], entrant[2]])
+
+    # write the match list to disk for visual inspection
+    out_path = out_dir + 'interprofessional_transitions_' + str(year_window) + '_year_window.csv'
+    with open(out_path, 'w') as out_p:
+        writer = csv.writer(out_p)
+        writer.writerow(["EXITEE NAME", "EXIT YEAR", "EXIT PROFESSION", "",
+                         "ENTRANT NAME", "ENTRY YEAR", "ENTRANT PROFESSION"])
+        for match in sorted(cross_prof_matches, key=operator.itemgetter(1)):  # sorted by exit year
+            writer.writerow(match)
+
+    # TODO write out the match list as a log file and write out a separate inter-professional transition
+    #  table for each year
+    #  also eyeball the match list better, there are some false positive you can weed out by tweaking that
+    #  last if condition; also deaggregate transition table by gender
+
+
+def professions_yearspans_cohorts(multiprofessional_person_year_table, combined=False):
+    """
+    Given a multiprofessional year table, returns a dict of this form
+
+    {'profession':
+        {'start year': int, first observed year for profession
+         'end year': int, last observed year for profesion
+         ' entry': {year1: list of entry cohort names for year1, year1: list of entry cohort names for year1,...}
+         'exit': {year1: list of entry cohort names for year1, year2: list of entry cohort names for year2,...}
+         }
+    }
+
+    :param multiprofessional_person_year_table: a person-year table that covers multiple professions
+    :param combined: bool, True if we're dealing with the table of combined professions
+    :return: a dict of data on each profession
+    """
+    # sort the table by profession and by year
+    prof_col_idx = helpers.get_header('all', 'combine').index('profesie')
+    year_col_idx = helpers.get_header('all', 'combine').index('an')
+    multiprofessional_person_year_table.sort(key=operator.itemgetter(prof_col_idx, year_col_idx))
+
+    # make four separate subtables by profession
+    professions = [[*prof] for key, prof in itertools.groupby(multiprofessional_person_year_table,
+                                                              key=operator.itemgetter(prof_col_idx))]
+    data_dict = {}
+    for p in professions:
+        prof_name = p[0][prof_col_idx]
+        start_year, end_year = int(p[0][year_col_idx]), int(p[-1][year_col_idx])
+        # NB: +1 to entry year to ignore left censor (when all enter),
+        # and -1 to exit year to ignore right censor (when all leave)
+        entry_cohorts = descriptives.cohort_name_lists(p, start_year + 1, end_year, p, entry=True, combined=combined)
+        exit_cohorts = descriptives.cohort_name_lists(p, start_year, end_year - 1, p, entry=False, combined=combined)
+
+        data_dict.update({prof_name: {'start year': start_year, 'end year': end_year,
+                                      'entry': entry_cohorts, 'exit': exit_cohorts}})
+    return data_dict
+
+
+def interunit_mobility_table(person_year_table, profession, unit_type):
+    """
+        For each year make a dict of interunit mobility table, a square matrix where rows are sending unit and columns are
+    receiving unit -- diagonals are "did not move".
+
+    The output table should be composed of year sub-tables and should look something like this:
+
+    YEAR 1
+                UNIT 1  UNIT 2  UNIT 3
+        UNIT 1    2       0       1
+        UNIT 2    6       10      0
+        UNIT 3    3       4       4
+
+
+    YEAR 2
+
+                UNIT 1  UNIT 2  UNIT 3
+        UNIT 1    0        3       5
+        UNIT 2    10       5       3
+        UNIT 3    2        5       1
+
+    :param person_year_table:
+    :param profession:
+    :param unit_type:
+    :return:
+    """

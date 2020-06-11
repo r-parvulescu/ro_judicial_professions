@@ -29,7 +29,6 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
     :param unit_type: None, or string; if string, type of the unit as it appears in header of person_year_table
                       (e.g. "camera")
     :param entry: bool, True if we're getting data for entry cohorts, False if for exit cohorts
-
     :return: a dict of years, where each value is a dict with gender metrics
     """
 
@@ -173,7 +172,7 @@ def metrics_dict(start_year, end_year):
     return m_dict
 
 
-def cohort_name_lists(person_year_table, start_year, end_year):
+def cohort_name_lists(person_year_table, start_year, end_year, profession, entry=True, combined=False):
     """
     For each year in the range from start_year to end_year, return a list of full-names of the people that joined
     the profession in that year.
@@ -181,26 +180,39 @@ def cohort_name_lists(person_year_table, start_year, end_year):
     :param person_year_table: a table of person-years, as a list of lists
     :param start_year: int, year we start looking at
     :param end_year: int, year we stop looking
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param entry: bool, True if we're getting data for entry cohorts, False if for exit cohorts
+    :param combined: bool, True if we're dealing with the table of combined professions
     :return: a dict of years, where each value is a list of full-name tuples of the people who joined the profession
              that year
     """
+    stage = 'preprocess'
+    if combined:
+        profession, stage = 'all', 'combine'
+
+    pid_col_idx = helpers.get_header(profession, stage).index('cod persoană')
+    year_col_idx = helpers.get_header(profession, stage).index('an')
+    surname_col_idx = helpers.get_header(profession, stage).index('nume')
+    given_name_col_idx = helpers.get_header(profession, stage).index('prenume')
+
     # make a dict, key = year, value = empty list
     cohorts = {year: [] for year in range(start_year, end_year + 1)}
     # group by people
-    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(1))]  # row[1] == PID
+    people = [person for k, [*person] in itertools.groupby(sorted(person_year_table, key=itemgetter(pid_col_idx)),
+                                                           key=itemgetter(pid_col_idx))]
 
     # append the full name of the first year of each person to its cohort
     for person in people:
-        first_year = person[0]
+        edge_person_year = person[0] if entry else person[-1]
 
-        if start_year <= int(first_year[6]) <= end_year:  # row[6] = year
-            # row[2] = surname, row[3] = given_name
-            cohorts[int(first_year[6])].append(first_year[2] + ' | ' + first_year[3])
+        if start_year <= int(edge_person_year[year_col_idx]) <= end_year:
+            cohorts[int(edge_person_year[year_col_idx])].append(
+                edge_person_year[surname_col_idx] + ' | ' + edge_person_year[given_name_col_idx])
 
     return cohorts
 
 
-def brought_in_by_family(person_year_table, start_year, end_year):
+def brought_in_by_family(person_year_table, start_year, end_year, profession):
     """
     Finds people in each cohort that share at least one surname with someone who was ALREADY in the profession.
     The assumption is that a surname match indicates kinship.
@@ -220,6 +232,7 @@ def brought_in_by_family(person_year_table, start_year, end_year):
     :param person_year_table: a table of person-years, as a list of lists
     :param start_year: int, the first year we consider
     :param end_year: int, the last year we consider
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return: a dict with key = year and val = list of cohort members who share a surname with a more senior professional
     """
 
@@ -231,7 +244,7 @@ def brought_in_by_family(person_year_table, start_year, end_year):
         surnames_by_year[year].update(surnames)
 
     # get the fullnames of each cohort
-    cohort_names = cohort_name_lists(person_year_table, start_year, end_year)
+    cohort_names = cohort_name_lists(person_year_table, start_year, end_year, profession)
 
     # initiate a dict with key = year and value = full name of cohort member with a surname match to a previous year
     fullname_with_surname_match = {year: set() for year in range(start_year, end_year + 1)}
@@ -253,46 +266,63 @@ def brought_in_by_family(person_year_table, start_year, end_year):
     return fullname_with_surname_match
 
 
-def professional_transition(multiprofessional_person_year_table, start_year, end_year):
+def inter_unit_mobility(person_year_table, profession, unit_type, start_year, end_year):
     """
-    Finds possible name matches between people who retired in year X from profession A, and people who joined
-    professions B, C... in the years from X to X+4, inclusive. In other words, if someone left a profession one year,
-    see if in the next five years they joined any of the other professions.
+    For each year make a dict of interunit mobility table, a square matrix where rows are sending unit and columns are
+    receiving unit -- diagonals are "did not move".
 
-    NB: need to choose carefully the start and end years since for a number of year
+    The output table should be composed of year sub-tables and should look something like this:
 
-    :param multiprofessional_person_year_table: a person-year table that covers multiple professions
-    :param start_year: int, first year we consider
-    :return: None
+    YEAR 1
+                UNIT 1  UNIT 2  UNIT 3
+        UNIT 1    2       0       1
+        UNIT 2    6       10      0
+        UNIT 3    3       4       4
+
+
+    YEAR 2
+
+                UNIT 1  UNIT 2  UNIT 3
+        UNIT 1    0        3       5
+        UNIT 2    10       5       3
+        UNIT 3    2        5       1
+
+    :param person_year_table:
+    :param profession:
+    :param unit_type:
+    :return:
     """
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    unit_col_idx = helpers.get_header(profession, 'preprocess').index(unit_type)
 
-    # see if people who have left one profession end up in another
+    # the sorted list of unique units
+    units = sorted(list({person_year[unit_col_idx] for person_year in person_year_table}))
 
-    # generally want to err on the side of over-inclusion (false positives) since I'll be looking over every
-    # match anyway
+    # make the mobility dict, which later will become a mobility matrix
+    mobility_dict = {}
+    for year in range(start_year, end_year + 1):
+        # the first-level key is the row/sender, the second-level key is the column/receiver
+        units_dict = {unit: {unit: 0 for unit in units} for unit in units}
+        mobility_dict.update({year: units_dict})
 
-    # initialise a list of cross-professional matches
+    # break up table into people
+    person_year_table.sort(key=itemgetter(pid_col_idx, year_col_idx))  # sort by person ID and year
+    people = [person for key, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
 
-    # for each profession
+    # look at each person
+    for person in people:
+        # look through each of their person-years
+        for idx, person_year in enumerate(person):
+            # compare this year and last year's units
+            if idx > 0:
+                sender = person[idx - 1][unit_col_idx]
+                receiver = person_year[unit_col_idx]
+                # if they're different, we have mobility
+                if sender != receiver:
+                    # the transition year is, by convention, the sender's year
+                    transition_year = person_year[year_col_idx]
+                    # increment the sender-receiver cell in the appropriate year
+                    mobility_dict[transition_year][sender][receiver] += 1
 
-    # for each year
-
-    # make a set of all people who retire this year
-
-    # make a set of all people in all other professions who begin their careers in that year
-    # or in following four years (five years total)
-
-    # for each name in my set of retirees
-
-    # see if that name is in the set of other professions
-
-    # match rule: if name is composed of 2+ name components and there's a match with at least two
-    # names of another 2+ name component
-    # optional: restrict matches to those in same appellate area
-
-    # if we have a match, save the match to a match list where you simply write
-    # a tuple: [(full | name, year retire, profession), (full | name, year retire, profession)]
-
-    # save match list to disk for visual inspection inspection
-
-    pass
+    return mobility_dict
