@@ -54,7 +54,7 @@ def clean(ppt, change_dict, range_years, year, profession):
     # It's probably more efficient for 'name_order' to run immediately after "move_surname", so that all
     # subsequent cleaners work with order-standardised names.
     print('      RUNNING: NAME ORDER')
-    ppt = name_order(ppt)
+    ppt = name_order(ppt, profession)
 
     print('      RUNNING: LENGTHEN SURNAME')
     ppt = lengthen_name(ppt, profession, change_dict, time, range_years, surname=True, year=year)
@@ -227,7 +227,7 @@ def move_surname(person_period_table, change_dict, time):
     return helpers.deduplicate_list_of_lists(corrected_data_table)
 
 
-def name_order(person_period_table):
+def name_order(person_period_table, profession):
     """
     ignore name order within surnames and given names and sort each alphabetically.  For example, all of:
 
@@ -246,15 +246,25 @@ def name_order(person_period_table):
     [SARDU, ZUH, ŞERBAN], not [SARDU, ŞERBAN ZUH] but this doesn't matter so long as it's consistent.
 
     :param person_period_table: a table of person-periods (e.g. person-years) as a list of lists
+    :param profession:  string, "judges", "prosecutors", "notaries" or "executori".
     :return a person period-table with one standardised name that ignores within-surname and
             within-given name order
     """
+    # get column indixes for surnames and given names
+    if profession == 'notaries':
+        sns_col_idx, gns_col_idx = 2, 3
+    else:
+        sns_col_idx = helpers.get_header(profession, 'collect').index('nume')
+        gns_col_idx = helpers.get_header(profession, 'collect').index('prenume')
 
     name_sorted_table = []
     for row in person_period_table:
-        sorted_surnames = ' '.join(sorted(row[0].split()))
-        sorted_given_names = ' '.join(sorted(row[1].split()))
-        name_sorted_table.append([sorted_surnames, sorted_given_names] + row[2:])
+        sorted_surnames = ' '.join(sorted(row[sns_col_idx].split()))
+        sorted_given_names = ' '.join(sorted(row[gns_col_idx].split()))
+        if profession == 'notaries':
+            name_sorted_table.append(row[0:2] + [sorted_surnames, sorted_given_names] + row[4:])
+        else:
+            name_sorted_table.append([sorted_surnames, sorted_given_names] + row[2:])
 
     return helpers.deduplicate_list_of_lists(name_sorted_table)
 

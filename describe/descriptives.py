@@ -78,7 +78,6 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
                       (e.g. "camera")
     :return: None
     """
-
     # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
     dict_row = helpers.row_to_dict(row, profession, 'preprocess')
     gender = dict_row['sex']

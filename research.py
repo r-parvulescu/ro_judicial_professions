@@ -104,14 +104,14 @@ if __name__ == '__main__':
 
     # run the data pipeline for each professional separately: collection, preprocess, describe
     # write output at each steps, to check logs and so that early steps are saved if later ones error out
-    '''
+
     for p, d in professions_details.items():
-        
+
         # collect the data (which also does a first clean)
         in_dir = root + trunks['dispersed'] + leaves[p]['dispersed']
         out_path = root + trunks['collected'] + leaves[p]['collected']['file']
         make_table.make_pp_table(in_dir, out_path, p)
-        
+
         # preprocess the data (add variables, standardise names, assign unique IDs, etc.)
         in_dir = root + trunks['collected'] + leaves[p]['collected']['dir']
         pop_out_path = root + trunks['preprocessed'] + leaves[p]['preprocessed']['population']
@@ -129,8 +129,7 @@ if __name__ == '__main__':
             sample_in_file = root + trunks['preprocessed'] + leaves[p]['preprocessed']['sample']
             sample_out_dir = root + trunks['descriptives'] + leaves[p]['descriptives']['sample']
             describe.describe(sample_in_file, sample_out_dir, p, d['range'][0], d['range'][1], d['units'])
-    
-    '''
+
     # now do inter-professional comparisons
 
     # first combine preprocessed data from diverse professions into one table;

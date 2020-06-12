@@ -56,7 +56,7 @@ def preprocess(in_directory, pop_out_path, continuity_out_path, std_log_path, pi
     # standardisation, deduplication, assigning person-ids, can all be ignored for notaries; just add gender info
     if profession == 'notaries':
         # reshape
-        ppts['year'][0] = reshape_to_person_years(ppts['year'][0])
+        ppts['year'][0] = reshape_to_person_years(ppts['year'][0], profession)
         # add gender column; py = person-year; py[3] == given names
         # load gender dict
         gender_dict = gender.get_gender_dict()
@@ -146,7 +146,7 @@ def add_workplace_profile(person_period_table, profession):
     return ppt_with_wp
 
 
-def reshape_to_person_years(person_table):
+def reshape_to_person_years(person_table, profession):
     """
     Takes a table of persons (with columns for entry and exit year) and reshapes it to a table of person-years.
 
@@ -155,7 +155,8 @@ def reshape_to_person_years(person_table):
 
     NB: header for person-table is [nume, prenume, camera, localitatea, intrat, ieşit]
 
-    :param person_table:
+    :param person_table: a table of persons, NOT person-years (each person is one row)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return:
     """
 
@@ -163,7 +164,7 @@ def reshape_to_person_years(person_table):
     person_years = []
 
     # the last year before right censor
-    max_year = max({int(row[4]) for row in person_table})
+    max_year = max({int(row[4]) for row in person_table})  # row[4] == year
 
     # each person is a row -- so give each row/person a unique, person-level ID
     pt_with_pids = [[idx] + row for idx, row in enumerate(person_table)]
@@ -180,6 +181,10 @@ def reshape_to_person_years(person_table):
 
     # give every person-year row a unique ID
     py_with_row_ids = [[idx] + row for idx, row in enumerate(person_years)]
+
+    # now re-order names so surnames and given names are (each separately) in alphabetical order;
+    # this function also acts as a row deduplicator
+    py_with_row_ids = standardise.name_order(py_with_row_ids, profession)
 
     return py_with_row_ids
 

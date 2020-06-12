@@ -440,7 +440,6 @@ def inter_professional_transition_table(infile_path, out_dir, year_window):
 
     # for each profession
     for sending_profession in professions_data:
-        print(sending_profession)
         # see what the other professions are
         other_professions = {prof for prof in professions_data if prof != sending_profession}
 
