@@ -13,6 +13,7 @@ def get_gender(given_names, row, gender_dict):
     :param given_names: string of given names
     :param row: person-period row as list e.g. [col1 val, col2 val, col3 val]
     :param gender_dict: dictionary, key = name : val = gender
+    :return person_gender, a string that only ever takes the values 'm', 'f' or 'dk'
     """
     person_gender = []
     given_names = given_names.split(' ')
