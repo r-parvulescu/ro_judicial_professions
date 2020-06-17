@@ -91,6 +91,9 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
 
 if __name__ == '__main__':
 
+    # run the data pipeline for each professional separately: collection, preprocess, describe
+    # write output at each steps, to check logs and so that early steps are saved if later ones error out
+
     # the dictionary of professions, the years for which each has data, and the units for deaggregated analyses
     professions_details = {'judges': {'range': (1988, 2020),
                                       'units': ('ca cod', 'nivel')},
@@ -101,9 +104,6 @@ if __name__ == '__main__':
                            'notaries': {'range': (1995, 2019),
                                         'units': None}
                            }
-
-    # run the data pipeline for each professional separately: collection, preprocess, describe
-    # write output at each steps, to check logs and so that early steps are saved if later ones error out
 
     for p, d in professions_details.items():
 
@@ -140,4 +140,4 @@ if __name__ == '__main__':
 
     # then we look for transitions from one profession to the other, for a 3-year time window
     descr_out_dir = root + trunks['descriptives'] + leaves['combined']['descriptives']['population']
-    describe.inter_professional_transition_table(prep_out_path, descr_out_dir, 1)
+    describe.inter_profession_transfer_table(prep_out_path, descr_out_dir, 1)

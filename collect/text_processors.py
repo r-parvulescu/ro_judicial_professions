@@ -434,9 +434,24 @@ def court_name_cleaner(court_name):
     court_name = ' '.join(court_name.split()).strip()  # reduces whitespace to one space
     court_name = space_name_replacer(court_name, court_sectors_buc_transdict)
     court_name = space_name_replacer(court_name, court_names_transdict)
-    # catch this non-standard name which slips through every other filter (very frustrating)
+    court_name = court_name_ad_hoc_corrector(court_name)
+    return court_name
+
+
+def court_name_ad_hoc_corrector(court_name):
+    """
+    Catches and corrects ad-hoc typos and non-standard spellings that slip through every other filter.
+    :param court_name: string, a dirt name of a court
+    :return: string, a clean, standardised court name
+    """
     if court_name == 'JUDECĂTORIA RM VÂLCEA':
         court_name = "JUDECĂTORIA RÂMNICU VÂLCEA"
+    if court_name == "JUDECĂTORIA ŞIMLEU":
+        court_name = "JUDECĂTORIA ŞIMLEUL SILVANIEI"
+    court_name = court_name.replace("ŞIMLEU SILVANIEI", "ŞIMLEUL SILVANIEI")
+    court_name = court_name.replace("TRIBUNALUL TIMIŞOARA", "TRIBUNALUL TIMIŞ")
+    # sometimes the court name is something like "'TRIBUNALUL JUDEŢEAN SĂLAJ" -- eliminate "JUDEŢEAN
+    court_name = court_name.replace("JUDEŢEAN ", "")
     return court_name
 
 

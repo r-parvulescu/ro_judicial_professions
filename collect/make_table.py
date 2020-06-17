@@ -125,7 +125,7 @@ def make_pp_table(in_dir, out_path, profession):
                 if file_count < 3000:
                     file_count += 1
                     file_path = root + os.sep + file
-                    print(file_count, '|', file_path)
+                    print(file_count, '|', file)
                     people_periods_dict = triage(file_path, profession)
                     [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
