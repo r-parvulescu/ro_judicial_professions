@@ -6,17 +6,18 @@ import csv
 import itertools
 import operator
 import natsort
-from copy import deepcopy
 from describe import descriptives
 from helpers import helpers
 
 
-def describe(in_file_path, out_directory, profession, start_year, end_year, unit_type=None):
+def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, start_year, end_year, unit_type=None):
     """
     Generate basic descriptives , and write them to disk.
 
     :param in_file_path: path to the base data file
-    :param out_directory: sting, directory where the descriptives files will live
+    :param out_dir_tot: string, directory where the descriptive files on total counts will live
+    :param out_dir_mob: string, directory where the descriptive files on mobility will live
+    :param out_dir_inher: string, directory where the descriptive files on inheritance will live
     :param start_year: first year we're considering
     :param end_year: last year we're considering
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -28,33 +29,43 @@ def describe(in_file_path, out_directory, profession, start_year, end_year, unit
 
     with open(in_file_path, 'r') as infile:
         table = list(csv.reader(infile))[1:]  # start from first index to skip header
-
+    ''''
     # make table of total counts per year
-    year_counts_table(table, start_year, end_year, profession, out_directory)
+    year_counts_table(table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
-    entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=True)
-    entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=False)
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
 
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
 
         # make table for extent of career centralisation around capital city appellate region, per year per unit
-        career_movements_table(table, profession, "ca cod", out_directory)
+        career_movements_table(table, profession, "ca cod", out_dir_mob)
 
         # make tables of total counts per year, per level in judicial hierarchy
-        year_counts_table(table, start_year, end_year, profession, out_directory, unit_type='nivel')
+        year_counts_table(table, start_year, end_year, profession, out_dir_tot, unit_type='nivel')
 
-        # make tables for exit cohorts, per year, per gender, per level in judicial hierarchy
-        entry_exit_gender(table, start_year, end_year, profession, out_directory, entry=False, unit_type='nivel')
+        # make tables of total counts per year, per appellate region
+        year_counts_table(table, start_year, end_year, profession, out_dir_tot, unit_type='ca cod')
+
+        # make tables for entry and  exit cohorts, per year, per gender, per level in judicial hierarchy
+        entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False, unit_type='nivel')
+        entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True, unit_type='nivel')
 
         # make table for mobility between appellate court regions
-        inter_unit_mobility_table(table, out_directory, profession, 'ca cod')
+        inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
 
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_directory, entry=True)
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_directory, entry=False)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=True)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=False)
+
+    else:  # for notaries and executori only
+    '''
+    if profession == 'executori' or profession == 'notaries':
+        # make table for professional inheritance
+        profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -312,12 +323,10 @@ def career_movements_table(person_year_table, profession, unit_type, out_dir):
                 # number of careers that did not start in Bucharest and never went through Bucharest
                 num_non_buc_through_non_buc = num_start_non_buc - non_buc_through_buc
 
-                percent_never_left_home = int(round(helpers.weird_division(never_left_home, num_careers), 2) * 100)
-                percent_never_left_buc = int(round(helpers.weird_division(never_left_buc, num_start_buc), 2) * 100)
-                percent_non_buc_through_buc = int(round(helpers.weird_division(non_buc_through_buc,
-                                                                               num_start_non_buc), 2) * 100)
-                percent_non_buc_through_non_buc = int(round(helpers.weird_division(num_non_buc_through_non_buc,
-                                                                                   num_start_non_buc), 2) * 100)
+                percent_never_left_home = helpers.percent(never_left_home, num_careers)
+                percent_never_left_buc = helpers.percent(never_left_buc, num_start_buc)
+                percent_non_buc_through_buc = helpers.percent(non_buc_through_buc, num_start_non_buc)
+                percent_non_buc_through_non_buc = helpers.percent(num_non_buc_through_non_buc, num_start_non_buc)
 
                 # and write the row
                 percent_row = {'max career length': length, 'never_left_home': percent_never_left_home,
@@ -491,3 +500,63 @@ def inter_unit_mobility_table(person_year_table, out_dir, profession, unit_type)
             for u in units:
                 writer.writerow([u] + [sending_units[u][units[i]] for i in range(0, len(units))])
             writer.writerow(['\n'])
+
+
+def profession_inheritance_table(out_dir, person_year_table, profession, year_window=1000, num_top_names=0):
+    """
+    Puts the profession inheritance dict in a table, adding some pecentages and sums. Output table has header
+    "YEAR", "MALE ENTRIES", "FEMALE ENTRIES", "TOTAL ENTRIES", "MALE INHERITANCE COUNT", "FEMALE INHERITANCE COUNT",
+    "TOTAL INHERITANCE COUNT", "MALE INHERITANCE PERCENT", "FEMALE INHERITANCE PERCENT", "TOTAL INHERITANCE PERCENT"
+
+    :param out_dir: directory where the inheritance table will live
+    :param person_year_table: a table of person years as a list of lists
+    :param year_window: int, how far back you want to look for inheritance; e.g. year_window == 4, we look four years
+                        back, so if in 2004, we look back to 2000 (inclusive); Default is 1000, i.e. look at all years
+    :param num_top_names: int, the number of top most frequent surnames that we consider the set of "common" surnames,
+                          e.g. if num_top_names == 10, the ten surnames with the most associated people are considered
+                          the "most common" surnames; Default is zero, i.e. no names are common
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: None
+    """
+
+    # get the inheritance dict
+    inheritance_dict = descriptives.profession_inheritance(out_dir, person_year_table, profession,
+                                                           year_window, num_top_names)
+    sum_male_entries, sum_female_entries = 0, 0
+    sum_male_inherit, sum_female_inherit = 0, 0
+
+    table_out_path = out_dir + '/' + profession + '_inheritance_table.csv'
+    with open(table_out_path, 'w') as out_p:
+        writer = csv.writer(out_p)
+        writer.writerow([profession.upper()])
+        writer.writerow(["YEAR", "MALE ENTRIES", "FEMALE ENTRIES", "TOTAL ENTRIES", "MALE INHERITANCE COUNT",
+                         "FEMALE INHERITANCE COUNT", "TOTAL INHERITANCE COUNT", "MALE INHERITANCE PERCENT",
+                         "FEMALE INHERITANCE PERCENT", "TOTAL INHERITANCE PERCENT"])
+
+        # for each year in the inheritance dict
+        for year, counts in inheritance_dict.items():
+            # increment counters
+            sum_male_entries += counts["male entrants"]
+            sum_female_entries += counts["female entrants"]
+            sum_male_inherit += counts["male inherit"]
+            sum_female_inherit += counts["female inherit"]
+
+            # get sums and percentages
+            total_entries = counts["female entrants"] + counts["male entrants"]
+            total_inherit = counts["female inherit"] + counts["male inherit"]
+            female_inherit_percent = helpers.percent(counts["female inherit"], counts["female entrants"])
+            male_inherit_percent = helpers.percent(counts["male inherit"], counts["male entrants"])
+            total_inherit_percent = helpers.percent(total_inherit, total_entries)
+
+            writer.writerow([year, counts["male entrants"], counts["female entrants"], total_entries,
+                             counts["male inherit"], counts["female inherit"], total_inherit,
+                             male_inherit_percent, female_inherit_percent, total_inherit_percent])
+
+        global_percent_male_inherit = helpers.percent(sum_male_inherit, sum_male_entries)
+        global_percent_female_inherit = helpers.percent(sum_female_inherit, sum_female_entries)
+        global_percent_total_inherit = helpers.percent(sum_male_inherit + sum_female_inherit,
+                                                       sum_male_entries + sum_female_entries)
+
+        writer.writerow(["GLOBAL", sum_male_entries, sum_female_entries, sum_male_entries + sum_female_entries,
+                         sum_male_inherit, sum_female_inherit, sum_male_inherit + sum_female_inherit,
+                         global_percent_male_inherit, global_percent_female_inherit, global_percent_total_inherit])
