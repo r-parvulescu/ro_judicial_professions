@@ -55,6 +55,19 @@ def row_to_dict(row, profession, stage):
     return dict(zip(keys, row))
 
 
+def percent(numerator, denominator):
+    """
+    Returns an integer valued percentage from a numerator and denominator. Evidently assumes that the numerator
+    is the fraction of the denominator total. E.g. if n = 3 and d = 4, we get 75.
+
+    :param numerator: int or float
+    :param denominator: int or float
+    :return: int, the percentage
+    """
+
+    return int(round(weird_division(numerator, denominator), 2) * 100)
+
+
 def weird_division(numerator, denominator):
     """
     Returns zero if denominator is zero.
