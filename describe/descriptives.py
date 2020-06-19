@@ -6,6 +6,7 @@ import csv
 from operator import itemgetter
 import itertools
 from copy import deepcopy
+from collections import OrderedDict
 import natsort
 from helpers import helpers
 from preprocess.gender import gender
@@ -82,7 +83,7 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
     """
     # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
     dict_row = helpers.row_to_dict(row, profession, 'preprocess')
-    gender = dict_row['sex']
+    gendr = dict_row['sex']
     year = int(dict_row['an'])
     unit = dict_row[unit_type] if units else None
 
@@ -91,10 +92,10 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
 
         # increment cohort sizes and cohort gender counters
         count_dict['grand_total'][year]['total_size'] += 1
-        count_dict['grand_total'][year][gender] += 1
+        count_dict['grand_total'][year][gendr] += 1
         if unit_type:
             count_dict[unit][year]['total_size'] += 1
-            count_dict[unit][year][gender] += 1
+            count_dict[unit][year][gendr] += 1
 
 
 def percent_female(count_dict, units, unit_type=None):
@@ -173,6 +174,172 @@ def metrics_dict(start_year, end_year):
     return m_dict
 
 
+def profession_inheritance(out_dir, person_year_table, year_window, num_top_names, profession):
+    """
+    Finds people in each entry cohort who were brought into the profession by kin.
+
+    The assumption is that if one of your surnames matches the surname of someone who was in the profession before you
+    AND who was, at any point, the same chamber (appellate court jurisdiction) as you are upon entry, then you two are
+    kin. More strict match rules for common surnames and the city of Bucharest are discussed in the comments of the
+    relevant match criteria.
+
+    #TODO put in criteria for people who joined in other chamber but later moved to the one with kin
+
+    NB: because we consider overlap with ANY surnames (to catch people who add surnames, which is especially
+    the case for married women) we make bags of all DISTINCT surnames, so a compound surname like "SMITH ROBSON"
+    would become two surnames, "SMITH" and "ROBSON".
+
+    NB: this function is meant to roughly identify kinship and err on the side of inclusion. It assumes that each
+    match is then human-checked to weed out false positives, e.g. common surnames that coincidentally overlap.
+
+    :param out_dir: directory where the log of interprofessional transition matches will live
+    :param person_year_table: a table of person-years, as a list of lists
+    :param year_window: how many years back we look for matches, e.g. "6" means we look for matches in the six years
+                        prior to your joining the profession
+    :param num_top_names: int, number of top surnames (out of entire set of surnames) that we're going to say are
+                             "the most common surnames"
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a dict with key = year and val = list of cohort members who share a surname with a more senior professional
+    """
+
+    # get column indexes that we'll need
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    surname_col_idx = helpers.get_header(profession, 'preprocess').index('nume')
+    given_name_col_idx = helpers.get_header(profession, 'preprocess').index('prenume')
+    gender_col_idx = helpers.get_header(profession, 'preprocess').index('sex')
+    chamber_col_idx = helpers.get_header(profession, 'preprocess').index('cameră')
+    town_col_idx = helpers.get_header(profession, 'preprocess').index('localitatea')
+
+    # get sets of common and uncommon surnames, across the entire person-year table
+    # uncommon surnames are all surnames EXCEPT those in three times the top range (this is a heuristic)
+    common_surnames = top_surnames(person_year_table, num_top_names, profession)
+    all_surnames = set()
+    for person_year in person_year_table:
+        for sn in person_year[surname_col_idx].split():
+            all_surnames.update({sn: 0})
+    uncommon_surnames = [all_surnames.remove(sn) for sn in top_surnames(person_year_table, 3 * num_top_names,
+                                                                        profession)]
+    # get year range
+    person_year_table.sort(key=itemgetter(year_col_idx))
+    start_year, end_year = person_year_table[0][year_col_idx], person_year_table[-1][year_col_idx]
+
+    # intialise dict of counters for each year's entry cohort -- main counters of interest are "male inherit" and 
+    # "female inherit", indicating how many people of each gender inherited their professions 
+    inheritance_dict = {year: {"male": 0, "female": 0, "male inherit": 0, "female inherit": 0}
+                        for year in range(start_year + 1, end_year + 1)}  # can't see inheritance for first cohort
+
+    # initialise a log of kin matches which we can inspect for hiccups
+    kin_match_log = []
+
+    # group person-year table by year, make yearly subtables value in dict, key is year
+    tables_by_year_dict = {int(pers_years[0][year_col_idx]): pers_years for key, [*pers_years]
+                           in itertools.groupby(sorted(person_year_table, key=year_col_idx), key=year_col_idx)}
+
+    # get full names for each yearly entry cohort
+    yearly_entry_cohorts_full_names = cohort_name_lists(person_year_table, start_year, end_year, profession)
+
+    # starting with the second available year
+    for current_year, current_person_years in tables_by_year_dict.items():
+        if current_year != min(tables_by_year_dict):
+
+            # get all the people from the previous years
+            people_already_here = people_in_prior_years(current_year, person_year_table, year_window, profession)
+
+            # get this year's list of names of new recruits, i.e. fresh entrants
+            recruits = yearly_entry_cohorts_full_names[current_year]
+
+            # iterate through the current person years
+            for py in current_person_years:
+                rec_full_name = py[surname_col_idx] + ' | ' + py[given_name_col_idx]  # recruit's full name
+                rec_gend = py[gender_col_idx]  # recruit's gender
+
+                # increment entry cohort counters
+                if rec_gend == 'f':
+                    inheritance_dict[current_year]['female'] += 1
+                if rec_gend == 'm':
+                    inheritance_dict[current_year]['male'] += 1
+
+                # if that person is a new recruit;
+                # NB: full names in 'recruits' are in format 'SURNAMES | GIVEN NAMES'
+                if rec_full_name in recruits:
+
+                    # compare them with everyone already here
+                    for person_already in people_already_here:
+
+                        # if they have a kin match with someone already here
+                        if kin_match(py, person_already, common_surnames, uncommon_surnames, profession):
+
+                            # save that kin match into a log file
+
+                            # the format for the log table should be:
+                            # to the left should be the recruits full name, year, chamber, and town
+                            # to the right same info for the person they matched with
+                            rec_chamb, rec_town = py[chamber_col_idx], py[town_col_idx]
+                            p_alrdy_fn = person_already[surname_col_idx] + ' | ' + person_already[given_name_col_idx]
+                            p_alrdy_chamb, p_alrdy_town = person_already[chamber_col_idx], person_already[town_col_idx]
+                            kin_match_log.append([rec_full_name, current_year, rec_chamb, rec_town] + 2 * [''] +
+                                                 [p_alrdy_fn, p_alrdy_chamb, p_alrdy_town])
+
+                            # and increment inheritance values
+                            if rec_gend == 'f':
+                                inheritance_dict[current_year]["female inherit"] += 1
+                            if rec_gend == 'm':
+                                inheritance_dict[current_year]["male inherit"] += 1
+
+    # write the match log to disk
+    log_out_path = out_dir + '_kin_matches_' + str(year_window) + '_year_window_match_list_log.csv'
+    with open(log_out_path, 'w') as out_path:
+        writer = csv.writer(out_path)
+        writer.writerrow("ENTRANT FULL NAME", "ENTRY YEAR", "ENTRY CHAMBER", "ENTRY TOWN", "", "",
+                         "KIN FULL NAME", "KIN YEAR", "KIN CHAMBER", "KIN TOWN")
+        for match in sorted(kin_match_log, key=itemgetter(1)):  # sorted by entry year of recruit
+            writer.writerow(match)
+
+    # return the entries count dict
+    return inheritance_dict
+
+
+def top_surnames(person_year_table, top_size, profession):
+    """
+    Returns a set of top N most common surnames.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param top_size: int, number of top names we want to return
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a set of surnames that are common above a certain centile
+    """
+
+    # make dict of surnames
+    surname_col_idx = helpers.get_header(profession, 'preprocess').index('nume')
+    surnames = {}
+    for person_year in person_year_table:
+        for sn in person_year[surname_col_idx].split():
+            surnames.update({sn: 0})
+
+    # count the frequency of each surname; each new person that has that name adds one
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    persons = [person for key, [*person] in itertools.groupby(sorted(person_year_table, key=pid_col_idx),
+                                                              key=pid_col_idx)]
+    for pers in persons:
+        p_sns = pers[0][surname_col_idx].split()  # all person-years have same surnames, just use first year
+        for sn in p_sns:
+            surnames[sn] += 1
+
+    # now make a new dict where keys are frequencies and values are lists of name that have those frequencies
+    max_freq = max(list(surnames.values()))
+    freq_dict = {i: [] for i in range(1, max_freq + 1)}
+    [freq_dict[freq].append(sn) for sn, freq in surnames.items()]
+
+    # return a set of the top N names (as defined by top_size), and print what the top N are, so we can judge visually
+    top_freqs = sorted(list(freq_dict))[-top_size:]
+    top_sns = set()
+    for i in top_freqs:
+        for sn in top_freqs[i]:
+            print('freq: ' + str(i) + ' ; surname: ' + str(sn))
+            top_sns.add(sn)
+    return top_sns
+
+
 def cohort_name_lists(person_year_table, start_year, end_year, profession, entry=True, combined=False):
     """
     For each year in the range from start_year to end_year, return a list of full-names of the people that joined
@@ -213,58 +380,94 @@ def cohort_name_lists(person_year_table, start_year, end_year, profession, entry
     return cohorts
 
 
-def brought_in_by_family(person_year_table, start_year, end_year, profession):
+def people_in_prior_years(current_year, person_year_table, year_window, profession):
     """
-    Finds people in each cohort that share at least one surname with someone who was ALREADY in the profession.
-    The assumption is that a surname match indicates kinship.
+    Make a list of all people (NOT person years) that appear in the year window prior to the current year.
+    The list contains the LAST person-year that we see for that person within the time window
+    e.g. if they left three years before the current year, we see their info for three years ago
+    if they haven't left yet, we see their info for last year
 
-    Because a person can walk in their relative's occupational footsteps both via direct help (e.g. inheriting a
-    business) or by more diffuse mechanisms (e.g. your mother was merely an occupational role model), we do not limit
-    how long ago someone with your last name was in the profession. Your tenures may overlap (i.e. you're both in the
-    profession at the same time) or the other person may have retired fifteen years before you joined.
+    NB this matches based on the other person's last location, which is a simplifying heuristic
 
-    NB: because we consider overlap with ANY surnames (to catch people who add surnames, which is especially
-    the case for married women) we make bags of all DISTINCT surnames, so a compound surname like "SMITH ROBSON"
-    would become two surnames, "SMITH" and "ROBSON".
-
-    NB: this function is meant to roughly identify kinship and err on the side of inclusion. It assumes that each
-    match is then human-checked to weed out false positives, e.g. common surnames that coincidentally overlap.
-
-    :param person_year_table: a table of person-years, as a list of lists
-    :param start_year: int, the first year we consider
-    :param end_year: int, the last year we consider
+    :param current_year: int, the current year
+    :param person_year_table: a table of person years, as a list of lists
+    :param year_window: int, how far back we want to look; e.g. if year_window = 3 and current_year = 2008, the
+                        time window in which we look is 2005 to 2008.
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: a dict with key = year and val = list of cohort members who share a surname with a more senior professional
+    :return: a list person years, one per person
     """
 
-    # initialise a dict with distinct surnames for each year, then populate it
-    surnames_by_year = {year: set() for year in range(start_year, end_year + 1)}
-    for person_year in person_year_table:
-        year = int(person_year[6])  # person_year[6] = year
-        surnames = person_year[2].split()  # person_year[2] = surnames
-        surnames_by_year[year].update(surnames)
+    # get column indexes
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
 
-    # get the fullnames of each cohort
-    cohort_names = cohort_name_lists(person_year_table, start_year, end_year, profession)
+    # set the window in whih
+    window = list(range(current_year - year_window, current_year + 1))
 
-    # initiate a dict with key = year and value = full name of cohort member with a surname match to a previous year
-    fullname_with_surname_match = {year: set() for year in range(start_year, end_year + 1)}
+    # get all the person years before current year
+    pys_in_window = [py for py in person_year_table if py[year_col_idx] in window]
 
-    # keep a cohort full name if at least one of its surnames matches a surname from a prior year
-    for cohort_year, full_names in cohort_names.items():
+    # sort by person-ID and year, groupby person-ID
+    pys_in_window.sort(key=itemgetter(pid_col_idx, year_col_idx))
+    persons = [person for key, [*person] in itertools.groupby(pys_in_window, key=itemgetter(pid_col_idx))]
+    # return a list with last observation of each person (where each person is list of person years with a common PID)
+    return [pys_by_pers[-1] for pys_by_pers in persons]
 
-        # get the set of all surnames from years BEFORE the cohort year, i.e. before you joined the profession
-        surnames_in_prior_years = set()
-        [surnames_in_prior_years.update(surnames) for year, surnames in surnames_by_year.items()
-         if int(year) < int(cohort_year)]
 
-        # see which of the current cohort surnames match those from prior years,
-        # and keep that full name if there's a match
-        for fn in full_names:
-            surnames = fn.split(' | ')[0].split()
-            [fullname_with_surname_match[cohort_year].add(fn) for sn in surnames if sn in surnames_in_prior_years]
+def kin_match(recruit_data, old_pers_data, common_surnames, uncommon_surnames, profession):
+    """
+    Applies the kinship matching rules, returns True if there's a match.
 
-    return fullname_with_surname_match
+    The rule is: if the recruit shares at least one surname with the older profession member AND their chambers match,
+    then they're considered kin. The exceptions are:
+        - if one of the surnames in the most common names, then we need a match on BOTH surnames
+          before accepting the match
+        - if the locality is Bucharest the surname must NOT be in the most common names OR there has to be a match on
+          both surnames
+
+    NB: chamber ("cameră") indicates the appellate court jurisdiction in which the professional operates. This is also
+    the lowest level territorial, professional organisation for notaries and executori.
+
+    :param recruit_data: a list of data values (i.e. a row) for a new recruit;
+                         data in order of preprocessed headers, see helpers.helpers.get_header under 'preprocess'
+    :param old_pers_data: a list of data values (i.e a row) for a person that was there before the new recruit
+                         data in order of preprocessed headers, see helpers.helpers.get_header under 'preprocess'
+    :param common_surnames: set of strings, of most common surnames
+    :param uncommon_surnames: set of strings, of uncommon surnames
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: bool, True if there's a match, false otherwise
+    """
+
+    # get column indexes
+    surname_col_idx = helpers.get_header(profession, 'preprocess').index('nume')
+    chamber_col_idx = helpers.get_header(profession, 'preprocess').index('cameră')
+    town_col_idx = helpers.get_header(profession, 'preprocess').index('localitatea')
+
+    # get data; NB, surnames turned to bags, which automatically deduplicates surnames, e.g. STAN STAN --> STAN
+    rec_sns, rec_chamb, rec_town = set(recruit_data[surname_col_idx].split(' ')), recruit_data[chamber_col_idx], \
+                                   recruit_data[town_col_idx]
+    old_pers_sns, old_pers_chamb = set(old_pers_data[surname_col_idx].split(' ')), old_pers_data[chamber_col_idx]
+
+    # initiate set of matches
+    matches = set()
+
+    # if the sns are not among the most common
+    for sn in rec_sns:
+        if sn not in common_surnames:
+            # and the recruit is not in Bucharest
+            if rec_town != "BUCUREŞTI":
+                # if there's at least one name in common AND the chamber is in common
+                if len(rec_sns & old_pers_sns) > 0 and rec_chamb == old_pers_chamb:
+                    matches.add(True)
+            else:  # if the recruit is in Bucharest
+                # we only consider a match if the surname is less common, or at least two surnames match
+                if (len(rec_sns & old_pers_sns) > 0 and sn in uncommon_surnames) or len(rec_sns & old_pers_sns) > 1:
+                    matches.add(True)
+        else:  # if the surname is common, need match on two surnames
+            if len(rec_sns & old_pers_sns) > 1:
+                matches.add(True)
+    # if there's at least one match, return True
+    return True if True in matches else False
 
 
 def inter_unit_mobility(person_year_table, profession, unit_type):
@@ -428,7 +631,6 @@ def inter_professional_transfers(multiprofs_py_table, out_dir, year_window):
             writer.writerow(match)
 
     return transfers_dict
-    # TODO also deaggregate transition table by gender
 
 
 def professions_yearspans_cohorts(multiprofessional_person_year_table, combined=False):
