@@ -6,6 +6,7 @@ import csv
 import itertools
 import operator
 import natsort
+from scipy.stats.stats import pearsonr
 from describe import descriptives
 from helpers import helpers
 
@@ -29,17 +30,17 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
     with open(in_file_path, 'r') as infile:
         table = list(csv.reader(infile))[1:]  # start from first index to skip header
-    ''''
+
     # make table of total counts per year
-    year_counts_table(table, start_year, end_year, profession, out_dir_tot)
+    # year_counts_table(table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
+    # entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
+    # entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
 
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
-
+        '''
         # make table for extent of career centralisation around capital city appellate region, per year per unit
         career_movements_table(table, profession, "ca cod", out_dir_mob)
 
@@ -55,17 +56,20 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
         # make table for mobility between appellate court regions
         inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
-
+        '''
+        # make table of correlations between labour shortages and number of women that enter a tribunal area
+        low_court_gender_balance_profession_growth_table(table, out_dir_mob, profession)
+        ''''
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=True)
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=False)
 
     else:  # for notaries and executori only
-    '''
-    if profession == 'executori' or profession == 'notaries':
+
         # make table for professional inheritance
         profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
+        '''
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -560,3 +564,125 @@ def profession_inheritance_table(out_dir, person_year_table, profession, year_wi
         writer.writerow(["GLOBAL", sum_male_entries, sum_female_entries, sum_male_entries + sum_female_entries,
                          sum_male_inherit, sum_female_inherit, sum_male_inherit + sum_female_inherit,
                          global_percent_male_inherit, global_percent_female_inherit, global_percent_total_inherit])
+
+
+def low_court_gender_balance_profession_growth_table(person_year_table, out_dir, profession):
+    """
+    Table that shows the size of an entry cohort relative to the existing workforce, and the change in gender ratio
+    in the existing workforce since last year. "Existing workforce" refers to all low court magistrates in a certain
+    county/tribunal area, for each year.
+
+    For judges and prosecutors this means all magistrates working at low courts in a certain tribunal area (but
+    NOT the juges and appellate or tribunal courts). For notaries and executori this means all professionals working
+    within the county (since these professions have a one-level hierarchy).
+
+    THe columns are counties and the rows are years. Each row has two subrows:
+        i.  RELATIVE ENTRY COHORT SIZE: percent value of this year's entry cohort relative to last year's workforce size
+        ii. CHANGE IN GENDER RATIO: difference between this year's percent female and last year's pecent female;
+                                    a negative value indicates masculinisation, a positive value feminisation
+
+    Row correlations shows yearly correlation between relative entry cohort size and change in gender ratio, across
+    tribunal areas, with p-value for correlation. Column correlations shows correlation between relative entry cohort
+    size and mean change in gender ratio per tribunal, across years, with p-value for correlation.
+
+    :param out_dir: directory where the inheritance table will live
+    :param person_year_table: a table of person years as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: None
+    """
+    # get column indexes
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    jud_col_idx = helpers.get_header(profession, 'preprocess').index('jud cod')
+    tb_col_idx = helpers.get_header(profession, 'preprocess').index('trib cod')
+
+    # keep only person years that refer to low courts or low court parquets
+    person_year_table = [py for py in person_year_table if py[jud_col_idx] != '-88']
+
+    # get set of all tribunals and first and last observation years
+    all_tbs = natsort.natsorted(list({py[tb_col_idx] for py in person_year_table}))
+    edge_years = {int(py[year_col_idx]) for py in person_year_table}
+    start_year, end_year = min(edge_years), max(edge_years)
+
+    # get entry cohort data for all years, at lower court level
+    entry_cohorts = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,
+                                                   cohorts=True, unit_type='jud cod', entry=True)
+    # get totals data for all years, at lower court level
+    year_totals = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,
+                                                 cohorts=False, unit_type='jud cod')
+
+    # make dict where first level keys are year, second level keys are tribunal areas,
+    # and third level keys are person-years, then populate it
+    tb_year_dict = {year: {tb: [] for tb in all_tbs} for year in range(start_year, end_year + 1)}
+    [tb_year_dict[int(py[year_col_idx])][py[tb_col_idx]].append(py) for py in person_year_table]
+
+    # make dict of net changes in worker counts: first level keys are years, second level keys are tribunal areas,
+    # third level keys are "total worker gain" and "net female entry cohort"
+    net_dict = {year: {tb: {'relative entry cohort size': 0, 'change gender balance': 0} for tb in all_tbs}
+                for year in range(start_year + 1, end_year + 1)}  # omit first year, comparisons are with previous year
+
+    # fill the net dict
+    for year, tbs in tb_year_dict.items():
+        for tb, person_years in tbs.items():
+            if year > start_year:  # start with second year, since we look behind one year
+
+                previous_year_num_workers = len(tb_year_dict[year - 1][tb])
+                this_year_num_workers = len(person_years)
+
+                # get list of all low courts in this tribunal area, in this year
+                all_juds = {py[jud_col_idx] for py in person_years}
+
+                # initialise count of entry cohort size for low courts in tribunal area
+                this_year_entry_cohort_size = 0
+                # initialise counts for total number of women and total number of people, for last year and this year
+                previous_year_total_women, this_year_total_women = 0, 0
+                for jud in all_juds:
+                    this_year_entry_cohort_size += entry_cohorts[jud][year]['total_size']
+                    previous_year_total_women += year_totals[jud][year - 1]['f']
+                    this_year_total_women += year_totals[jud][year]['f']
+
+                percent_female_last_year = helpers.percent(previous_year_total_women, previous_year_num_workers)
+                percent_female_this_year = helpers.percent(this_year_total_women, this_year_num_workers)
+                diff_percent_female = percent_female_this_year - percent_female_last_year  # neg means masculinisation
+                relative_entry_cohort_size = helpers.percent(this_year_entry_cohort_size, previous_year_num_workers)
+
+                # update net dict
+                net_dict[year][tb]['relative entry cohort size'] = relative_entry_cohort_size
+                net_dict[year][tb]['change gender balance'] = diff_percent_female
+
+    # for each year make one list of "relative entry cohort size" across tribunals, and another for
+    # "change gender balance" across tribunals. Then find the correlation between the lists.
+    output_table = []
+    for year in net_dict:
+        relative_entry_cohort_size_list, gender_balance_change_list = [], []
+        for tb in all_tbs:
+            relative_entry_cohort_size_list.append(net_dict[year][tb]['relative entry cohort size'])
+            gender_balance_change_list.append(net_dict[year][tb]['change gender balance'])
+
+        correl = pearsonr(relative_entry_cohort_size_list, gender_balance_change_list)
+        correl_val, correl_p = round(correl[0], 3), round(correl[1], 3)
+
+        output_table.append([year, "RELATIVE ENTRY COHORT SIZE"] + relative_entry_cohort_size_list)
+        output_table.append(['', "CHANGE GENDER BALANCE"] + gender_balance_change_list + [correl_val, correl_p])
+
+    # do likewise for lists and correlatoins across years, per tribunal
+    column_correls, column_ps = ['', ''], ['', '']
+    for tb in all_tbs:
+        tb_relative_entry_list, tb_gender_balance_list = [], []
+        for year in net_dict:
+            tb_relative_entry_list.append(net_dict[year][tb]['relative entry cohort size'])
+            tb_gender_balance_list.append(net_dict[year][tb]['change gender balance'])
+
+        tb_correl = pearsonr(tb_relative_entry_list, tb_gender_balance_list)
+        tb_correl_val, tb_correl_p = round(tb_correl[0], 3), round(tb_correl[1], 3)
+        column_correls.append(tb_correl_val), column_ps.append(tb_correl_p)
+
+    output_table.append(column_correls), output_table.append(column_ps)
+
+    # and write table to disk
+    out_path = out_dir + profession + '_low_court_gender_balance_profession_growth.csv'
+    with open(out_path, 'w') as out_p:
+        writer = csv.writer(out_p)
+        writer.writerow([profession.upper()])
+        writer.writerow(['', "TRIBUNALS"])
+        writer.writerow(['YEAR', ''] + all_tbs + ["CORREL"])
+        [writer.writerow(row) for row in output_table]
