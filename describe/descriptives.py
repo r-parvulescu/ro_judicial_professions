@@ -11,6 +11,9 @@ from helpers import helpers
 from preprocess.gender import gender
 
 
+# FUNCTIONS FOR COUNTS FOR WHOLE SAMPLE AS WELL AS ENTRY AND EXIT COHORTS #
+
+
 def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohorts=True, unit_type=None, entry=True):
     """
     For each year in the range from start_year to end_year, return a dict of counts of women, men, don't knows,
@@ -169,6 +172,8 @@ def update_cohort_of_population(cohorts_dict, population_dict, entry=True, units
                     cohorts_dict[u][year]['chrt_prcnt_of_pop'] = helpers.percent(cohorts_dict[u][year]['total_size'],
                                                                                  yearly_unit_pop)
 
+
+# FUNCTIONS FOR DESCRIBING PROFESSIONAL INHERITANCE
 
 def profession_inheritance(out_dir, person_year_table, profession, year_window=1000, num_top_names=0):
     """
@@ -440,7 +445,7 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
               allow for people from Bucharest town placing their kin in the wider chamber, but not vice verse, since
               it's harder for peripherals to get a foothold downtown than the other way around
 
-    NB: chamber ("cameră") indicates the appellate court jurisdiction in which the professional operates. This is also
+    NB: chamber ("camera") indicates the appellate court jurisdiction in which the professional operates. This is also
     the lowest level territorial, professional organisation for notaries and executori.
 
     NB: the most recent chamber of the person already in the profession can match ANY ONE of the chambers in the career
@@ -491,6 +496,99 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
     # if there's at least one match, return True
     return True if True in matches else False
 
+
+# FUNCTIONS FOR DESCRIBING HIERARCHICAL MOBILITY
+
+def hierarchical_mobility(person_year_table, profession):
+    """
+    Finds how many people, each year, moved up, down, or across (i.e. between geographic units in the same level) from
+    their level in the judicial hierarchy, deaggregating mobility by gender. The levels are
+    {1: low court, 2: tribunal, 3: appellate court, 4: high court}.  The output dict has the following format:
+
+    {"year": {
+        "level1" : {
+            "up": {"m": int, "f": int, "dk": int, "total": int, "percent female": int},
+             "down": {"m": int, "f": int, "dk": int, "total": int, "percent female": int},
+             "across": {"m": int, "f": int, "dk": int, "total": int, "percent female": int}
+             },
+        "level2": {
+            "up": {"m": int, "f": int, "dk": int, "total": int, "percent female": int},
+            ...
+            },
+        ...
+        },
+    "year2"
+    ...
+    }
+
+    NB: "m" = male, "f" = "female", "dk" = "don't know".
+
+    NB: there is no "down" for low courts, or "up" and "across" for the high court.
+
+    NB: data on retirements ("out") come via exit cohorts from the function "pop_cohort_counts".
+
+    NB: only judges and prosecutors have a hierarchical system -- this function is not sensical for notaries, executori,
+        and lawyers.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a dict of mobility info
+    """
+
+    # get column indexes
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    gender_col_idx = helpers.get_header(profession, 'preprocess').index('sex')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    level_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+    jud_col_idx = helpers.get_header(profession, 'preprocess').index('jud cod')
+    trib_col_idx = helpers.get_header(profession, 'preprocess').index('trib cod')
+    ca_col_idx = helpers.get_header(profession, 'preprocess').index('ca cod')
+
+    # get the year range and set the mobility types
+    years = list(sorted({py[year_col_idx] for py in person_year_table}))
+    mobility_types = ["across", "down", "up"]
+
+    # initialise the mobility dict
+    mob_dict = {year: {lvl: {mob_type: {"m": 0, "f": 0, "dk": 0, "total": 0, "percent female": 0}
+                             for mob_type in mobility_types} for lvl in range(1, 5)} for year in years}
+
+    # group the person-year table by unique person IDs, i.e. by people
+    person_year_table.sort(key=itemgetter(pid_col_idx, year_col_idx))  # sort by person ID and year
+    people = [person for key, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
+
+    # fill in the mobility dict
+    for pers in people:
+        gend = pers[0][gender_col_idx]
+        for idx, pers_year in enumerate(pers):
+            # by convention we say there's mobility in this year if next year's location is different
+            if idx < len(pers) - 1:
+                year, level = pers_year[year_col_idx], int(pers_year[level_col_idx])
+                if level < int(pers[idx + 1][level_col_idx]):
+                    mob_dict[year][level]["up"][gend] += 1
+                elif level > int(pers[idx + 1][level_col_idx]):
+                    mob_dict[year][level]["down"][gend] += 1
+                else:
+                    # need to compare this year and next year's unit to see if they moved laterally
+                    # each unit is uniquely identified by it's three-level hierarchical code
+                    current_unit = '|'.join([pers_year[jud_col_idx], pers_year[trib_col_idx], pers_year[ca_col_idx]])
+                    next_unit = '|'.join(
+                        [pers[idx + 1][jud_col_idx], pers[idx + 1][trib_col_idx], pers[idx + 1][ca_col_idx]])
+                    if current_unit != next_unit:
+                        mob_dict[year][level]["across"][gend] += 1
+
+    # update the aggregate values
+    for year, levels in mob_dict.items():
+        for lvl, mobility_type in levels.items():
+            for mob in mobility_type:
+                mob_dict[year][lvl][mob]["total"] = sum([mob_dict[year][lvl][mob]["m"], mob_dict[year][lvl][mob]["f"],
+                                                         mob_dict[year][lvl][mob]["dk"]])
+                mob_dict[year][lvl][mob]["percent female"] = helpers.percent(mob_dict[year][lvl][mob]["f"],
+                                                                             mob_dict[year][lvl][mob]["total"])
+
+    return mob_dict
+
+
+# FUNCTIONS FOR MOBILITY BETWEEN GEOGRAPHIC UNITS #
 
 def inter_unit_mobility(person_year_table, profession, unit_type):
     """
@@ -561,6 +659,8 @@ def inter_unit_mobility(person_year_table, profession, unit_type):
 
     return mobility_dict
 
+
+# FUNCTIONS FOR INTER-PROFESSIONAL TRANSFER DESCRIPTION #
 
 def inter_professional_transfers(multiprofs_py_table, out_dir, year_window):
     """

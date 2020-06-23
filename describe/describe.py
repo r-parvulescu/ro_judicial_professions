@@ -32,11 +32,11 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
         table = list(csv.reader(infile))[1:]  # start from first index to skip header
 
     # make table of total counts per year
-    # year_counts_table(table, start_year, end_year, profession, out_dir_tot)
+    year_counts_table(table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
-    # entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
-    # entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
 
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
@@ -57,9 +57,12 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
         # make table for mobility between appellate court regions
         inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
         '''
+        # make table for hierarchical mobility
+        hierarchical_mobility_table(table, out_dir_mob, profession)
+
         # make table of correlations between labour shortages and number of women that enter a tribunal area
         low_court_gender_balance_profession_growth_table(table, out_dir_mob, profession)
-        ''''
+
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=True)
@@ -69,7 +72,6 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
         # make table for professional inheritance
         profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
-        '''
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -686,3 +688,41 @@ def low_court_gender_balance_profession_growth_table(person_year_table, out_dir,
         writer.writerow(['', "TRIBUNALS"])
         writer.writerow(['YEAR', ''] + all_tbs + ["CORREL"])
         [writer.writerow(row) for row in output_table]
+
+
+def hierarchical_mobility_table(person_year_table, out_dir, profession):
+    """
+    Write to disk a table that shows, per year, per level, per mobility type, the counts by gender and the overall
+    percent female of those who experienced that mobility event.
+
+    The header will be ["YEAR", "LEVEL", "ACROSS TOTAL", "ACROSS PERCENT FEMALE", "DOWN TOTAL", "DOWN PERCENT FEMALE",
+    "UP TOTAL","UP PERCENT FEMALE"].
+
+    :param out_dir: directory where the inheritance table will live
+    :param person_year_table: a table of person years as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: None
+    """
+
+    # get the mobility dict
+    mobility_dict = descriptives.hierarchical_mobility(person_year_table, profession)
+
+    # write to disk
+    out_path = out_dir + profession + "_hierarchical_mobility.csv"
+    fieldnames = ["YEAR", "LEVEL", "ACROSS TOTAL", "ACROSS PERCENT FEMALE", "DOWN TOTAL", "DOWN PERCENT FEMALE",
+                  "UP TOTAL", "UP PERCENT FEMALE"]
+    with open(out_path, 'w') as out_p:
+        writer = csv.DictWriter(out_p, fieldnames=fieldnames)
+        writer.writerow({"YEAR": profession.upper(), "LEVEL": '', "ACROSS TOTAL": '', "ACROSS PERCENT FEMALE": '',
+                         "DOWN TOTAL": '', "DOWN PERCENT FEMALE": '', "UP TOTAL": '', "UP PERCENT FEMALE": ''})
+        writer.writeheader()
+        for year, levels in mobility_dict.items():
+            for lvl, mob_type in levels.items():
+                across_total, across_percent = mob_type["across"]["total"], mob_type["across"]["percent female"]
+                down_total, down_percent = mob_type["down"]["total"], mob_type["down"]["percent female"]
+                up_total, up_percent = mob_type["up"]["total"], mob_type["up"]["percent female"]
+
+                writer.writerow({"YEAR": year, "LEVEL": lvl,
+                                 "ACROSS TOTAL": across_total, "ACROSS PERCENT FEMALE": across_percent,
+                                 "DOWN TOTAL": down_total, "DOWN PERCENT FEMALE": down_percent,
+                                 "UP TOTAL": up_total, "UP PERCENT FEMALE": up_percent})
