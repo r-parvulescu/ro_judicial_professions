@@ -30,10 +30,18 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
                          'pids': 'pids_logs_tests/pids_logs_judges/'
                      },
                      'descriptives': {
-                         'population': 'descriptives_judges/population/',
-                         'sample': 'descriptives_judges/sample/'}
+                         'population': {
+                             'totals': 'descriptives_judges/population/totals/',
+                             'mobility': 'descriptives_judges/population/mobility/',
+                             'inheritance': ''
+                         },
+                         'sample': {
+                             'totals': 'descriptives_judges/sample/totals/',
+                             'mobility': 'descriptives_judges/sample/mobility/',
+                             'inheritance': ''
+                         }
+                     }
                      },
-
           'prosecutors': {'dispersed': 'magistrati/code_ready/prosecutors',
                           'collected': {
                               'file': 'prosecutors/prosecutors',
@@ -46,8 +54,17 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
                               'pids': 'pids_logs_tests/pids_logs_prosecutors/'
                           },
                           'descriptives': {
-                              'population': 'descriptives_prosecutors/population/',
-                              'sample': 'descriptives_prosecutors/sample/'}
+                              'population': {
+                                  'totals': 'descriptives_prosecutors/population/totals/',
+                                  'mobility': 'descriptives_prosecutors/population/mobility/',
+                                  'inheritance': ''
+                              },
+                              'sample': {
+                                  'totals': 'descriptives_prosecutors/sample/totals/',
+                                  'mobility': 'descriptives_prosecutors/sample/mobility/',
+                                  'inheritance': ''
+                              }
+                          }
                           },
 
           'executori': {'dispersed': 'executori_judecatoresti/code_ready',
@@ -62,7 +79,11 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
                             'pids': '/pids_logs_tests/pids_logs_executori/'
                         },
                         'descriptives': {
-                            'population': 'descriptives_executori/population/',
+                            'population': {
+                                'totals': 'descriptives_executori/population/totals/',
+                                'mobility': 'descriptives_executori/population/mobility/',
+                                'inheritance': 'descriptives_executori/population/inheritance/'
+                            },
                             'sample': ''}
                         },
 
@@ -78,7 +99,11 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
                            'pids': ''
                        },
                        'descriptives': {
-                           'population': 'descriptives_notaries/population/',
+                           'population': {
+                               'totals': 'descriptives_notaries/population/totals/',
+                               'mobility': 'descriptives_notaries/population/mobility/',
+                               'inheritance': 'descriptives_notaries/population/inheritance/'
+                           },
                            'sample': ''}
                        },
           'combined': {'preprocessed': {'population': 'population/population_combined_professions.csv',
@@ -90,7 +115,6 @@ leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
           }
 
 if __name__ == '__main__':
-
     # run the data pipeline for each professional separately: collection, preprocess, describe
     # write output at each steps, to check logs and so that early steps are saved if later ones error out
 
@@ -105,30 +129,36 @@ if __name__ == '__main__':
                                         'units': None}
                            }
 
-    for p, d in professions_details.items():
+    for prof, deets in professions_details.items():
 
         # collect the data (which also does a first clean)
-        in_dir = root + trunks['dispersed'] + leaves[p]['dispersed']
-        out_path = root + trunks['collected'] + leaves[p]['collected']['file']
-        make_table.make_pp_table(in_dir, out_path, p)
+        in_dir = root + trunks['dispersed'] + leaves[prof]['dispersed']
+        out_path = root + trunks['collected'] + leaves[prof]['collected']['file']
+        make_table.make_pp_table(in_dir, out_path, prof)
 
         # preprocess the data (add variables, standardise names, assign unique IDs, etc.)
-        in_dir = root + trunks['collected'] + leaves[p]['collected']['dir']
-        pop_out_path = root + trunks['preprocessed'] + leaves[p]['preprocessed']['population']
-        sample_out_path = root + trunks['preprocessed'] + leaves[p]['preprocessed']['sample']
-        std_log_path = root + trunks['preprocessed'] + leaves[p]['preprocessed']['standardise']
-        pids_log_path = root + trunks['preprocessed'] + leaves[p]['preprocessed']['pids']
-        preprocess.preprocess(in_dir, pop_out_path, sample_out_path, std_log_path, pids_log_path, p)
+        in_dir = root + trunks['collected'] + leaves[prof]['collected']['dir']
+        pop_out_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['population']
+        sample_out_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['sample']
+        std_log_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['standardise']
+        pids_log_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['pids']
+        preprocess.preprocess(in_dir, pop_out_path, sample_out_path, std_log_path, pids_log_path, prof)
 
         # describe the data (make tables of descriptive statistics)
-        pop_in_file = root + trunks['preprocessed'] + leaves[p]['preprocessed']['population']
-        pop_out_dir = root + trunks['descriptives'] + leaves[p]['descriptives']['population']
-        describe.describe(pop_in_file, pop_out_dir, p, d['range'][0], d['range'][1], d['units'])
+        pop_in_file = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['population']
+        pop_out_dir_tot = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['totals']
+        pop_out_dir_mob = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['mobility']
+        pop_out_dir_inher = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['inheritance']
+        describe.describe(pop_in_file, pop_out_dir_tot, pop_out_dir_mob, pop_out_dir_inher, prof,
+                          deets['range'][0], deets['range'][1], deets['units'])
 
-        if p == 'judges' or p == 'prosecutors':
-            sample_in_file = root + trunks['preprocessed'] + leaves[p]['preprocessed']['sample']
-            sample_out_dir = root + trunks['descriptives'] + leaves[p]['descriptives']['sample']
-            describe.describe(sample_in_file, sample_out_dir, p, d['range'][0], d['range'][1], d['units'])
+        if prof == 'judges' or prof == 'prosecutors':
+            sample_in_file = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['sample']
+            sample_out_dir_tot = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['totals']
+            sample_out_dir_mob = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['mobility']
+            sample_out_dir_inher = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['inheritance']
+            describe.describe(sample_in_file, sample_out_dir_tot, sample_out_dir_mob, sample_out_dir_inher, prof,
+                              deets['range'][0], deets['range'][1], deets['units'])
 
     # now do inter-professional comparisons
 
@@ -136,7 +166,7 @@ if __name__ == '__main__':
     # we do this for the entire population, though can also be done for a sample
     in_dir = root + trunks['preprocessed'] + 'population'
     prep_out_path = root + trunks['preprocessed'] + leaves['combined']['preprocessed']['population']
-    # make_table.combine_profession_tables(in_dir, prep_out_path)
+    make_table.combine_profession_tables(in_dir, prep_out_path)
 
     # then we look for transitions from one profession to the other, for a 3-year time window
     descr_out_dir = root + trunks['descriptives'] + leaves['combined']['descriptives']['population']
