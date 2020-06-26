@@ -7,6 +7,7 @@ from operator import itemgetter
 import itertools
 from copy import deepcopy
 import natsort
+import statistics
 from helpers import helpers
 from preprocess.gender import gender
 
@@ -865,3 +866,239 @@ def name_match(fullname_1, fullname_2):
 
     else:
         return False
+
+
+def career_stars(person_year_table, profession, use_cohorts, first_x_years):
+    """
+
+    We want two pieces of information:
+
+    a) of climbers, what percent of those that beat average climb time to appellate court also previously beat average
+        climb time to tribunal? This helps us see how much second level star is predicted by first level star status
+    b) per yearly cohort, total count and % female of everyone who beat the average climb time from low court to
+        tribunal, conditional on them having climbed
+
+    NB: these metrics are for all cohorts in the dataset, but the average climb time is derived from the cohorts in
+        "use_cohorts". The assumption is that differences in average climb times across cohorts are not important.
+
+    :param person_year_table:
+    :param profession:
+    :param use_cohorts:
+    :param first_x_years:
+    :return:
+    """
+
+    # get column indexes
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    gender_col_idx = helpers.get_header(profession, 'preprocess').index('sex')
+    level_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+
+    # sort by unique person ID and year, then group by person-year
+    person_year_table.sort(key=itemgetter(pid_col_idx, year_col_idx))
+    people = [person for key, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
+
+    # get average climb time to tribunal and appelate courts
+    career_climbs = career_climbings(person_year_table, profession, use_cohorts, first_x_years)
+    avg_to_trib = career_climbs['tribunal']['counts dict']['avrg yrs to promotion']
+    avg_to_appellate = career_climbs['appellate']['counts dict']['avrg yrs to promotion']
+
+    # initialise star cohort dict
+    all_years = sorted(list({py[year_col_idx] for py in person_year_table}))
+    steps = {'tribunal', 'appellate'}
+    star_cohorts = {year: {step: {'m': 0, 'f': 0, 'dk': 0, 'total': 0, 'percent female': 0} for step in steps}
+                    for year in all_years}
+
+    total_to_appellate = 0  # counter of how many climbed to appellate level by normal route
+    continuation_stars = 0  # counter of many appellate stars were also trib stars
+
+    for person in people:
+        entry_year = person[0][year_col_idx]
+        gend = person[0][gender_col_idx]
+        levels = {int(person_year[level_col_idx]) for person_year in person}  # the levels person's been in
+
+        # if they've been in low courts and tribunals
+        if len({1, 2} & levels) >= 2:
+
+            time_to_trib = time_to_promotion(person, profession, 'tribunal', 1000)
+
+            # if they respected minimum time before promotion to tribunal, i.e. not extra-professional imports
+            # AND they got to tribunal faster than average
+            if min_time_promotion('tribunal') <= time_to_trib < avg_to_trib:
+                # increment the relevant tribunal star gender counter in the appropriate start year
+                star_cohorts[entry_year]['tribunal'][gend] += 1
+
+        # if they've been in low courts, tribunals, and appellate courts
+        if len({1, 2, 3} & levels) >= 3:
+
+            time_to_appellate = time_to_promotion(person, profession, 'appellate', 1000)
+            time_to_tribunal = time_to_promotion(person, profession, 'tribunal', 1000)
+
+            # if they respected minimum time before promotion to tribunal AND minimum to appellate
+            if min_time_promotion('tribunal') <= time_to_tribunal and \
+                    min_time_promotion('appellate') <= time_to_appellate:
+
+                total_to_appellate += 1  # increment counter of all who reached appellate via normal path
+
+                # if they climbed to appellate faster than average
+                if time_to_appellate < avg_to_appellate:
+                    star_cohorts[entry_year]['appellate'][gend] += 1
+
+                # if they climbed to appellate court AND to tribunal faster than average
+                if time_to_appellate < avg_to_appellate and time_to_tribunal < avg_to_trib:
+                    continuation_stars += 1
+
+    # get sums and percentages
+    percent_continuation_stars = helpers.percent(continuation_stars, total_to_appellate)
+    for year, levels in star_cohorts.items():
+        for lvl, counts in levels.items():
+            counts['total'] = counts['m'] + counts['f'] + counts['dk']
+            counts['percent female'] = helpers.percent(counts['f'], counts['total'])
+
+    # return trib_star_cohorts with percent_continuation_stars added
+    star_cohorts.update({"percent continuation stars": percent_continuation_stars})
+    return star_cohorts
+
+
+def career_climbings(person_year_table, profession, use_cohorts, first_x_years):
+    """
+    Return a dict of metrics on career climbing, i.e. of moving up the judicial hierarchy.
+
+    NB: these metrics are only for a subset of observations, namely those speciied by use_cohorts. The purpose of this
+        feature is to help us avoid years with rotten data, while giving us a big enough time interval to catch
+        movement up two levels
+
+    We want two pieces of information:
+
+    a) total counts and % female of those who stay in low courts, climb to tribunals, and climb to appellate courts
+    b) average time it took to climb, whether to tribunal or appellate court, for those cohort members who climbed to
+        those levels
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param use_cohorts: list of ints, each int represents a year for which you analyse entry cohorts, e.g. [2006, 2007]
+    :param first_x_years: int, the number of years from start of career that we condsider, e.g. ten years since entry
+    :return:
+    """
+
+    # get column indexes
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    gender_col_idx = helpers.get_header(profession, 'preprocess').index('sex')
+
+    # sort by unique person ID and year, then group by person-year
+    person_year_table.sort(key=itemgetter(pid_col_idx, year_col_idx))
+    people = [person for key, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
+
+    # initialise dict that breaks down careers by how high they climbed
+    counts_dict = {'m': 0, 'f': 0, 'dk': 0, 'total': 0, 'percent female': 0, 'avrg yrs to promotion': 0}
+    levels = ['low court', 'tribunal', 'appellate', 'high court']
+    careers_by_levels = {lvl: {'career type table': [], 'counts dict': deepcopy(counts_dict)} for lvl in levels}
+    fill_careers_by_levels_dict(people, profession, use_cohorts, careers_by_levels)
+
+    # for each career type get basic descriptives
+    for step, info in careers_by_levels.items():
+        times_to_promotion = []
+        for pers in info['career type table']:
+            gend = pers[0][gender_col_idx]
+
+            # see time it takes to climb hierarchy; use only first X years of career, to make comparable
+            # careers of different total length
+            t_to_promotion = time_to_promotion(pers, profession, step, first_x_years)
+
+            # if person jumped seniority requirements (e.g. came from different legal profession), or has > ten years
+            # (this is an error, since time_to_promotion should only keep first ten years), ignore
+
+            if t_to_promotion == 'NA':  # catches low court people
+                info['counts dict'][gend] += 1
+            else:  # t_to_promotion != 'NA', i.e. everyone else
+                if min_time_promotion(step) <= t_to_promotion < 11:
+                    times_to_promotion.append(t_to_promotion)  # save time to promotion
+                    info['counts dict'][gend] += 1
+
+        info['counts dict']['total'] = info['counts dict']['f'] + info['counts dict']['m'] + info['counts dict']['dk']
+        info['counts dict']['percent female'] = helpers.percent(info['counts dict']['f'], info['counts dict']['total'])
+        info['counts dict']['avrg yrs to promotion'] = 'NA' if 'NA' in times_to_promotion or times_to_promotion == [] \
+            else round(statistics.mean(times_to_promotion))
+
+    return careers_by_levels
+
+
+def fill_careers_by_levels_dict(people, profession, use_cohorts, career_types_dict):
+    """
+    Update a career types dict (form given in first part of function "career stars").
+
+    :param people: a list of persons, where each "person" is a list of person years (each itself of list) that share
+                   a unique person-level ID
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param use_cohorts: list of ints, each int represents a year for which you analyse entry cohorts, e.g. [2006, 2007]
+    :param career_types_dict: a layered dict (form given in first part of function "career stars")
+    :return: None
+    """
+
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    level_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+
+    for person in people:
+        entry_year = int(person[0][year_col_idx])  # get their entry year
+        entry_level = int(person[0][level_col_idx])  # some people start higher because before they were e.g. lawyers
+        levels = {int(person_year[level_col_idx]) for person_year in person}  # see what levels they've been in
+
+        # keep only people from specified entry cohorts who started at first level, i.e. no career jumpers
+        if entry_year in use_cohorts and entry_level == 1:
+            if 4 in levels:
+                career_types_dict['high court']['career type table'].append(person)
+            elif 3 in levels:
+                career_types_dict['appellate']['career type table'].append(person)
+            elif 2 in levels:
+                career_types_dict['tribunal']['career type table'].append(person)
+            else:
+                career_types_dict['low court']['career type table'].append(person)
+
+
+def time_to_promotion(person, profession, level, first_x_years):
+    """
+    Given a career level, find how long (i.e. how many person years) it took to get there.
+    
+    :param person: a list of person years that share a unique person ID
+    :param profession:
+    :param level: string, 'tribunal', 'appellate', or 'high court', indicating position in judicial hierarchy
+    :param first_x_years: int, how many years after start of career we consider, e.g. ten years after joing profession
+    :return: t_to_promotion, int, how long (in years) it took to get promoted
+    """
+
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    level_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+
+    # see how long it takes them to get a promotion; compare only first X years of everyone's career
+    t_to_promotion = 'NA'
+    entry_year = int(person[0][year_col_idx])
+
+    if level == 'tribunal':  # count how many years they were at low court
+        t_to_promotion = len([pers_year for pers_year in person if int(pers_year[level_col_idx]) == 1
+                              and int(pers_year[year_col_idx]) < entry_year + first_x_years])
+
+    if level == 'appellate':  # count how many year they were at low court or tribunal, i.e. not at appellate
+        t_to_promotion = len([pers_year for pers_year in person if (int(pers_year[level_col_idx]) == 1
+                                                                    or int(pers_year[level_col_idx]) == 2)
+                              and int(pers_year[year_col_idx]) < entry_year + first_x_years])
+
+    if level == 'high court':  # count how many years they were at low court
+        t_to_promotion = len([pers_year for pers_year in person if int(pers_year[level_col_idx]) != 4
+                              and int(pers_year[year_col_idx]) < entry_year + first_x_years])
+
+    return t_to_promotion
+
+
+def min_time_promotion(hierarchical_level):
+    """
+    There are strict seniority rules for promotion in the magistracy. If a person spent less than 3 years before a
+    tribunal promotion, less than 6 years before appellate court promotion, or less than 10 ten years before high court
+    promotion, they must have come from another profession, as this lets you jump seniority requirements.
+
+    :param hierarchical_level: string representing level in judicial hierarchy; must take values 'low court',
+                               'tribunal', 'appellate', or 'high court'
+    :return: int, minimum number of years at which one can get promoted
+    """
+
+    return {'low court': 0, 'tribunal': 3, 'appellate': 6, 'high court': 10}[hierarchical_level]

@@ -30,16 +30,18 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
     with open(in_file_path, 'r') as infile:
         table = list(csv.reader(infile))[1:]  # start from first index to skip header
-
+    '''
     # make table of total counts per year
     year_counts_table(table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
     entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
     entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
-
+    '''
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
+        career_climbers_stars_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
+                                    first_x_years=10, )
         '''
         # make table for extent of career centralisation around capital city appellate region, per year per unit
         career_movements_table(table, profession, "ca cod", out_dir_mob)
@@ -56,7 +58,7 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
         # make table for mobility between appellate court regions
         inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
-        '''
+        
         # make table for hierarchical mobility
         hierarchical_mobility_table(table, out_dir_mob, profession)
 
@@ -72,6 +74,7 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
         # make table for professional inheritance
         profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
+    '''
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -726,3 +729,62 @@ def hierarchical_mobility_table(person_year_table, out_dir, profession):
                                  "ACROSS TOTAL": across_total, "ACROSS PERCENT FEMALE": across_percent,
                                  "DOWN TOTAL": down_total, "DOWN PERCENT FEMALE": down_percent,
                                  "UP TOTAL": up_total, "UP PERCENT FEMALE": up_percent})
+
+
+def career_climbers_stars_table(person_year_table, out_dir, profession, use_cohorts, first_x_years):
+    """
+    Make two tables and write them to disk.
+
+    The first table shows the total number of people from select entry cohorts stayed at low court, reached tribunal,
+    appellate court, or even high court level, within a certain time frame. Also gives percent female of this total
+    number, per category. Rows are levels in the judicial hierarchy.
+
+    The second table shows
+        a) the percent of appellate stars (i.e. those who reached the court of appeals faster than
+            average) who were also tribunal stars. This let us see whether tribunal star status predicts appellate
+            court star status; this percentage is over the whole period under consideration
+        b) for each entry cohort, how many of its people were tribunal stars, how many appellate stars, and what the
+            percent female was in each cohort-category
+    Rows are year of entry.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param use_cohorts: list of ints, each int represents a year for which you analyse entry cohorts, e.g. [2006, 2007]
+    :param first_x_years: int, the number of years from start of career that we condsider, e.g. ten years since entry
+    :param out_dir: str, directory where the career climber and stars tables will live
+    :return: None
+    """
+
+    # get dicts of career climbs and of star_cohorts
+    career_climbs = descriptives.career_climbings(person_year_table, profession, use_cohorts, first_x_years)
+    stars = descriptives.career_stars(person_year_table, profession, use_cohorts, first_x_years)
+
+    # write the career climbing table
+    out_path_climbs = out_dir + profession + "_career_climbs_" + str(use_cohorts[0]) + "-" + str(use_cohorts[-1]) \
+                      + ".csv"
+    with open(out_path_climbs, 'w') as out_pc:
+        writer = csv.writer(out_pc)
+        header = ["LEVEL", "TOTAL MAXED OUT AT LEVEL", "PERCENT FEMALE MAXED OUT AT LEVEL",
+                  "AVERAGE NUMBER OF YEARS TO REACH LEVEL"]
+        writer.writerow([profession.upper()])
+        writer.writerow(header)
+        levels = ['low court', 'tribunal', 'appellate', 'high court']
+        for level in levels:
+            writer.writerow([level, career_climbs[level]['counts dict']['total'],
+                             career_climbs[level]['counts dict']['percent female'],
+                             career_climbs[level]['counts dict']['avrg yrs to promotion']])
+
+    # write the career stars table
+    out_path_stars = out_dir + profession + "_career_stars.csv"
+    with open(out_path_stars, 'w') as out_ps:
+        writer = csv.writer(out_ps)
+        header = ["COHORT YEAR", "LEVEL", "TOTAL STARS", "PERCENT FEMALE STARS"]
+        writer.writerow([profession.upper()])
+        writer.writerow(["PERCENT OF APPELLATE STARS THAT ALSO TRIBUNAL STARS", stars["percent continuation stars"]])
+        writer.writerow(header)
+        years = sorted(list(stars))[:-1]
+        stars_levels = ["tribunal", "appellate"]
+        for yr in years:
+            writer.writerow([yr])
+            for lvl in stars_levels:
+                writer.writerow(["", lvl, stars[yr][lvl]['total'], stars[yr][lvl]['percent female']])
