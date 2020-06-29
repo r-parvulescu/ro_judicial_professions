@@ -11,7 +11,8 @@ from describe import descriptives
 from helpers import helpers
 
 
-def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, start_year, end_year, unit_type=None):
+def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
+             profession, start_year, end_year, unit_type=None):
     """
     Generate basic descriptives , and write them to disk.
 
@@ -19,6 +20,7 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
     :param out_dir_tot: string, directory where the descriptive files on total counts will live
     :param out_dir_mob: string, directory where the descriptive files on mobility will live
     :param out_dir_inher: string, directory where the descriptive files on inheritance will live
+    :param out_dir_in_out: string, directory where the descriptive files on entries and exits will live
     :param start_year: first year we're considering
     :param end_year: last year we're considering
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -30,19 +32,19 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
     with open(in_file_path, 'r') as infile:
         table = list(csv.reader(infile))[1:]  # start from first index to skip header
-    '''
+
     # make table of total counts per year
     year_counts_table(table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True)
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False)
-    '''
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=True)
+    entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=False)
+
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
         career_climbers_stars_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
                                     first_x_years=10, )
-        '''
+
         # make table for extent of career centralisation around capital city appellate region, per year per unit
         career_movements_table(table, profession, "ca cod", out_dir_mob)
 
@@ -53,8 +55,8 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
         year_counts_table(table, start_year, end_year, profession, out_dir_tot, unit_type='ca cod')
 
         # make tables for entry and  exit cohorts, per year, per gender, per level in judicial hierarchy
-        entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=False, unit_type='nivel')
-        entry_exit_gender(table, start_year, end_year, profession, out_dir_mob, entry=True, unit_type='nivel')
+        entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=False, unit_type='nivel')
+        entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=True, unit_type='nivel')
 
         # make table for mobility between appellate court regions
         inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
@@ -67,14 +69,13 @@ def describe(in_file_path, out_dir_tot, out_dir_mob, out_dir_inher, profession, 
 
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=True)
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_mob, entry=False)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
 
     else:  # for notaries and executori only
 
         # make table for professional inheritance
         profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
-    '''
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):

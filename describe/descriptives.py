@@ -868,6 +868,11 @@ def name_match(fullname_1, fullname_2):
         return False
 
 
+# TODO still getting weird results from the career climbing/star functions, there shouldn't be observations at all for
+#  some years...
+
+# TODO do proper docstrings for career climbing/star functions
+
 def career_stars(person_year_table, profession, use_cohorts, first_x_years):
     """
 
