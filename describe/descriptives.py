@@ -8,6 +8,7 @@ import itertools
 from copy import deepcopy
 import natsort
 import statistics
+import Levenshtein
 from helpers import helpers
 from preprocess.gender import gender
 
@@ -208,11 +209,9 @@ def profession_inheritance(out_dir, person_year_table, profession, year_window=1
     given_name_col_idx = helpers.get_header(profession, 'preprocess').index('prenume')
     gender_col_idx = helpers.get_header(profession, 'preprocess').index('sex')
     chamber_col_idx = helpers.get_header(profession, 'preprocess').index('camera')
-    town_col_idx = helpers.get_header(profession, 'preprocess').index('localitatea')
     pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
 
-    # get sets of common and uncommon surnames, across the entire person-year table
-    # uncommon surnames are all surnames EXCEPT those in three times the top range (this is a heuristic)
+    # get set of common surnames across the entire person-year table
     common_surnames = top_surnames(person_year_table, num_top_names, profession)
 
     # get year range
@@ -234,7 +233,7 @@ def profession_inheritance(out_dir, person_year_table, profession, year_window=1
     # get full names for each yearly entry cohort
     yearly_entry_cohorts_full_names = cohort_name_lists(person_year_table, start_year, end_year, profession)
 
-    # make dict where keys are person-ids and values are lists of chambers in which person's gone
+    # make dict where keys are person-ids and values are lists of chambers in which person has served
     pids_chamb_dict = {py[pid_col_idx]: set() for py in person_year_table}  # initialise dict
     [pids_chamb_dict[py[pid_col_idx]].add(py[chamber_col_idx]) for py in person_year_table]  # fill it
 
@@ -264,32 +263,20 @@ def profession_inheritance(out_dir, person_year_table, profession, year_window=1
                     if rec_gend == 'm':
                         inheritance_dict[current_year]['male entrants'] += 1
 
-                    # compare them with everyone already here
+                    # compare recruit with everyone already here
                     for person_already in people_already_here:
 
-                        # if they have a kin match with someone already here
+                        # if recruit has a kin match with someone already here
                         if kin_match(py, person_already, pids_chamb_dict, common_surnames, profession):
 
                             # if match is NOT in match log, put in and increment counters
                             # this condition avoids one recruit matching two people in the same area, which
-                            # happens, especially with professional families
+                            # happens, especially with families of professionals
                             if True not in [True for match in kin_match_log if match[0] == rec_full_name]:
 
                                 # save that kin match into a log file
-
-                                # the format for the log table should be:
-                                # to the left should be the recruits full name, year, chamber, and town
-                                # to the right same info for the person they matched with
-                                rec_chamb, rec_town = py[chamber_col_idx], py[town_col_idx]
-
-                                p_alrdy_fn = person_already[surname_col_idx] + ' | ' + person_already[
-                                    given_name_col_idx]
-                                p_alrdy_chamb, p_alrdy_town = person_already[chamber_col_idx], person_already[
-                                    town_col_idx]
-                                p_alrdy_year = person_already[year_col_idx]
-
-                                kin_match_log.append([rec_full_name, current_year, rec_chamb, rec_town] + [''] +
-                                                     [p_alrdy_fn, p_alrdy_year, p_alrdy_chamb, p_alrdy_town])
+                                update_kin_match_log(kin_match_log, py, person_already, rec_full_name, current_year,
+                                                     profession)
 
                                 # and increment inheritance values
                                 if rec_gend == 'f':
@@ -298,7 +285,8 @@ def profession_inheritance(out_dir, person_year_table, profession, year_window=1
                                     inheritance_dict[current_year]["male inherit"] += 1
 
     # write the match log to disk
-    log_out_path = out_dir + profession + '_kin_matches_' + str(year_window) + '_year_window_match_list_log.csv'
+    log_out_path = out_dir + profession + '_kin_matches_' + str(year_window) + '_year_window_' \
+                   + 'exclude_ranks_top_names_' + str(num_top_names) + '_match_list_log.csv'
     with open(log_out_path, 'w') as out_path:
         writer = csv.writer(out_path)
         writer.writerow(["ENTRANT FULL NAME", "ENTRY YEAR", "ENTRY CHAMBER", "ENTRY TOWN", "",
@@ -312,12 +300,15 @@ def profession_inheritance(out_dir, person_year_table, profession, year_window=1
 
 def top_surnames(person_year_table, top_size, profession):
     """
-    Returns a set of top N most common surnames.
+    Return a set of surnames that are at among the N most frequent, where top_size = N.
+    e.g. if top_size = 3, we return surnames that are the most frequent in the population (e.g. "SMITH"),
+    the second most-frequent, and the third most frequent. If there are multiple names tied for a certain frequency
+    (e.g. SMITH and JONES both equally frequent on number one) then it returns all these (tied) names.
 
     :param person_year_table: a table of person-years, as a list of lists
     :param top_size: int, number of top names we want to return
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: a set of surnames that are common above a certain centile
+    :return: a set of top-ranked surnames
     """
 
     # let us know what profession we're on
@@ -353,7 +344,8 @@ def top_surnames(person_year_table, top_size, profession):
         print('    freq: ' + str(i) + ' ; surnames: ', freq_dict[i])
         for sn in freq_dict[i]:
             top_sns.add(sn)
-    return top_sns
+    # if top size is zero, defined as "there are no top names"
+    return top_sns if top_size != 0 else []
 
 
 def cohort_name_lists(person_year_table, start_year, end_year, profession, entry=True, combined=False):
@@ -438,6 +430,10 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
 
     The rule is: if the recruit shares at least one surname with the older profession member AND their chambers match,
     then they're considered kin. The exceptions are:
+        - if surnames match AND the your office infos differ by at most three Levenshtein distance then we ignore
+        other geographic considerations and match you as kin
+        - if surnames match and either their full name is in your office info, or your full name is in their office
+        info, then ignore other geographic considerations and match you as kin
         - if one of the surnames in the most common names, then we need a match on BOTH surnames
           before accepting the match
         - if the town is Bucharest then the match has to be not only on chamber but also on town/localitate;
@@ -481,6 +477,15 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
 
     # for each surname
     for sn in rec_sns:
+
+        # if match on surnames and on offices (bar typo); office info only available for executori
+        if profession == 'executori':
+            sediu_col_idx = helpers.get_header(profession, 'preprocess').index('sediul')
+            rec_sediu, old_pers_sediu = recruit_data[sediu_col_idx], old_pers_data[sediu_col_idx]
+            if rec_sediu != '-88':  # they need some office info, not just empties
+                if len(rec_sns & old_pers_sns) > 0 and Levenshtein.distance(rec_sediu, old_pers_sediu) <= 3:
+                    matches.add(True)
+
         # if the sn is not among the most common
         if sn not in common_surnames:
             # if there's at least one name in common AND recruit and person already there share 1+ chambers
@@ -496,6 +501,43 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
                 matches.add(True)
     # if there's at least one match, return True
     return True if True in matches else False
+
+
+def update_kin_match_log(kin_match_log, py, person_already, full_name, current_year, profession):
+    """
+    Updates the log of kin matches, which we keep for later visual inspection.
+
+    The format for the log table should be:
+      - left columns: the recruit's full name, year, chamber, and town
+      -right columns: same info for the person recruit is kin matched with
+
+    :param kin_match_log: list used to keep track of kin matches, for later visual inspection
+    :param py: person-year, list of data fields (order given in helpers.get_headers,
+            for "preprocess" and particular profession)
+    :param person_already: person-year row of person who was in the profession before the recruit
+    :param full_name: recruit's full name
+    :param current_year: year in which the recruit joined
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: None
+    """
+
+    # get column indexes
+    surname_col_idx = helpers.get_header(profession, 'preprocess').index('nume')
+    chamber_col_idx = helpers.get_header(profession, 'preprocess').index('camera')
+    town_col_idx = helpers.get_header(profession, 'preprocess').index('localitatea')
+    year_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    given_name_col_idx = helpers.get_header(profession, 'preprocess').index('prenume')
+
+    rec_chamb, rec_town = py[chamber_col_idx], py[town_col_idx]
+
+    p_alrdy_fn = person_already[surname_col_idx] + ' | ' + person_already[
+        given_name_col_idx]
+    p_alrdy_chamb, p_alrdy_town = person_already[chamber_col_idx], person_already[
+        town_col_idx]
+    p_alrdy_year = person_already[year_col_idx]
+
+    kin_match_log.append([full_name, current_year, rec_chamb, rec_town] + [''] +
+                         [p_alrdy_fn, p_alrdy_year, p_alrdy_chamb, p_alrdy_town])
 
 
 # FUNCTIONS FOR DESCRIBING HIERARCHICAL MOBILITY

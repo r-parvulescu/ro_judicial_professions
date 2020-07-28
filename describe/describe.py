@@ -60,7 +60,7 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
 
         # make table for mobility between appellate court regions
         inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
-        
+
         # make table for hierarchical mobility
         hierarchical_mobility_table(table, out_dir_mob, profession)
 
@@ -72,10 +72,19 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
 
-    else:  # for notaries and executori only
+    else:  # make tables for professional inheritance
+        # different name structures, so different parameters for notaries, executori and lawyers
+        if profession == 'executori':
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=5)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=6)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=0)
 
-        # make table for professional inheritance
-        profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
+        if profession == 'notaries':
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=4)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=14)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=15)
+            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=0)
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -535,7 +544,8 @@ def profession_inheritance_table(out_dir, person_year_table, profession, year_wi
     sum_male_entries, sum_female_entries = 0, 0
     sum_male_inherit, sum_female_inherit = 0, 0
 
-    table_out_path = out_dir + '/' + profession + '_inheritance_table.csv'
+    table_out_path = out_dir + '/' + profession + 'exclude_ranks_top_names_' + str(num_top_names) \
+                     + '_inheritance_table.csv'
     with open(table_out_path, 'w') as out_p:
         writer = csv.writer(out_p)
         writer.writerow([profession.upper()])
