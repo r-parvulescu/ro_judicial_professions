@@ -72,19 +72,17 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
             entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
 
-    else:  # make tables for professional inheritance
-        # different name structures, so different parameters for notaries, executori and lawyers
-        if profession == 'executori':
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=3)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=5)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=6)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=0)
-
-        if profession == 'notaries':
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=4)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=14)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=15)
-            profession_inheritance_table(out_dir_inher, table, profession, year_window=1000, num_top_names=0)
+    # make tables for professional inheritance
+    # different professions have different sizes and structures, so different name rank and year window parameters
+    prof_name_ranks = {'executori': (2, 5, 6, 0), 'notaries': (3, 7, 14, 15, 0),
+                       'judges': (4, 18, 36, 37, 0), 'prosecutors': (2, 12, 24, 25, 0)}
+    prof_year_windows = {'executori': 1000, 'notaries': 1000, 'judges': 5, 'prosecutors': 5}
+    for num_top_names in prof_name_ranks[profession]:
+        # one run with, one run without robustness check
+        profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
+                                     num_top_names=num_top_names, multi_name_robustness=False)
+        profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
+                                     num_top_names=num_top_names, multi_name_robustness=True)
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -521,7 +519,8 @@ def inter_unit_mobility_table(person_year_table, out_dir, profession, unit_type)
             writer.writerow(['\n'])
 
 
-def profession_inheritance_table(out_dir, person_year_table, profession, year_window=1000, num_top_names=0):
+def profession_inheritance_table(out_dir, person_year_table, profession, year_window=1000, num_top_names=0,
+                                 multi_name_robustness=False):
     """
     Puts the profession inheritance dict in a table, adding some pecentages and sums. Output table has header
     "YEAR", "MALE ENTRIES", "FEMALE ENTRIES", "TOTAL ENTRIES", "MALE INHERITANCE COUNT", "FEMALE INHERITANCE COUNT",
@@ -535,17 +534,23 @@ def profession_inheritance_table(out_dir, person_year_table, profession, year_wi
                           e.g. if num_top_names == 10, the ten surnames with the most associated people are considered
                           the "most common" surnames; Default is zero, i.e. no names are common
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param multi_name_robustness: bool, True if we're running the multi-name robustness check
     :return: None
     """
 
     # get the inheritance dict
-    inheritance_dict = descriptives.profession_inheritance(out_dir, person_year_table, profession,
-                                                           year_window, num_top_names)
+    inheritance_dict = descriptives.profession_inheritance(out_dir, person_year_table, profession, year_window,
+                                                           num_top_names, multi_name_robustness=multi_name_robustness)
     sum_male_entries, sum_female_entries = 0, 0
     sum_male_inherit, sum_female_inherit = 0, 0
 
-    table_out_path = out_dir + '/' + profession + 'exclude_ranks_top_names_' + str(num_top_names) \
-                     + '_inheritance_table.csv'
+    if multi_name_robustness:
+        table_out_path = out_dir + '/' + profession + '_MN_ROBUST' + '_exclude_surnames_above_rank_' \
+                         + str(num_top_names) + '_inheritance_table.csv'
+    else:
+        table_out_path = out_dir + '/' + profession + '_exclude_surnames_above_rank_' + str(num_top_names) \
+                         + '_inheritance_table.csv'
+
     with open(table_out_path, 'w') as out_p:
         writer = csv.writer(out_p)
         writer.writerow([profession.upper()])
