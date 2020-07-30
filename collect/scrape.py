@@ -57,15 +57,19 @@ def update_db(zip_archive_root_path, scrape_log, profession):
         for mo, units in months.items():
 
             # if the year-month > max year-month from the scrape log, (i.e. that year-month hasn't been scraped)
+
             if datetime(int(year), int(mo), 1) > datetime.strptime(slog[profession]['max data date'], "%Y-%m-%d"):
                 year_month_dates.add(datetime(int(year), int(mo), 1))
 
                 # download the associated files and store them in the existing DB (which is a zip archive)
                 for unit_name, file_link in units.items():
-                    file_path = '/'.join([year, mo]) + '-'.join([year, mo, unit_name])
-                    download_files_to_zip([file_link], header, zip_archive, download_fails, file_path=file_path)
+                    file_path = '/'.join([str(year), mo]) + '/' + '-'.join([str(year), mo, unit_name])
+                    download_files_to_zip(file_link, header, zip_archive, download_fails, file_path=file_path)
+            else:
+                print('DB UP TO DATE FOR: ', profession)
 
-    retry_failed_downloads(header, zip_archive, download_fails)
+    if download_fails:
+        retry_failed_downloads(header, zip_archive, download_fails)
 
     # update the scrape log
     slog[profession]['scrape dates'].append(datetime.today().strftime("%Y-%m-%d"))
@@ -94,17 +98,17 @@ def make_link_dict(header, profession):
                                       '3824/Direcţia-Natională-Anticoruptie',
                                       '3823/Parchetul-Militar-de-pe-lângă-Curtea-Militară-de-Apel',
                                       '3822/Parchetul-de-pe-langa-Curtea-de-Apel-Alba-Iulia',
-                                      '3821/Parchetul-de-pe-langa-Curtea-de-Apel-Bacau'
-                                      '3820/Parchetul-de-pe-langa-Curtea-de-Apel-Brasov'
+                                      '3821/Parchetul-de-pe-langa-Curtea-de-Apel-Bacau',
+                                      '3820/Parchetul-de-pe-langa-Curtea-de-Apel-Brasov',
                                       '3819/Parchetul-de-pe-langa-Curtea-de-Apel-Bucuresti',
                                       '3818/Parchetul-de-pe-langa-Curtea-de-Apel-Cluj',
-                                      '3817/Parchetul-de-pe-langa-Curtea-de-Apel-Constanta'
+                                      '3817/Parchetul-de-pe-langa-Curtea-de-Apel-Constanta',
                                       '3816/Parchetul-de-pe-langa-Curtea-de-Apel-Craiova',
-                                      '3815/Parchetul-de-pe-langa-Curtea-de-Apel-Galati'
+                                      '3815/Parchetul-de-pe-langa-Curtea-de-Apel-Galati',
                                       '3814/Parchetul-de-pe-langa-Curtea-de-Apel-Iasi',
                                       '3813/Parchetul-de-pe-langa-Curtea-de-Apel-Pitesti',
                                       '3812/Parchetul-de-pe-langa-Curtea-de-Apel-Ploiesti',
-                                      '3811/Parchetul-de-pe-langa-Curtea-de-Apel-Oradea'
+                                      '3811/Parchetul-de-pe-langa-Curtea-de-Apel-Oradea',
                                       '3810/Parchetul-de-pe-langa-Curtea-de-Apel-Suceava',
                                       '3809/Parchetul-de-pe-langa-Curtea-de-Apel-Timisoara',
                                       '3808/Parchetul-de-pe-langa-Curtea-de-Apel-Targu-Mures']},
@@ -134,7 +138,6 @@ def make_link_dict(header, profession):
     # e.g. files for the Cluj Court of Appeals area, or for the Military Courts
     url_base = unit_urls[profession]['base']
     for url_tail in unit_urls[profession]['tails']:
-
         # new CSM site doesn't have a robots.txt page, I space it by a second for courtesy
         time.sleep(1)
 
@@ -266,12 +269,12 @@ def get_file_urls(url_of_urls, headers, url_base, download_url_marker):
 
 # COMMON FUNCTIONS #
 
-def download_files_to_zip(url, headers, zip_archive, download_fails, file_path=None):
+def download_files_to_zip(url, header, zip_archive, download_fails, file_path=None):
     """
     Download .doc(x) file and append it to an existing zip archive.
 
     :param url: str, url leading to files for downloading
-    :param headers: dict, header for requests.get
+    :param header: dict, header for requests.get
     :param zip_archive: zip archive where file is deposited
     :param download_fails: dict, urls (as strings) from which we have not been able to download data
                             key is url, value is its associated file_path
@@ -282,10 +285,14 @@ def download_files_to_zip(url, headers, zip_archive, download_fails, file_path=N
 
     # try downloading the file
     try:
-        file = requests.get(url, headers=headers)
+        file = requests.get(url, headers=header)
+
+        # the old CSM site has url links ending in ".doc" or whatever, the new site doesn't
         if not file_path:
             # store by year, month, largest territorial unit
             file_path = '/' + url[40:44] + '/' + url[37:39] + '/' + url[34:]
+        else:
+            file_path = file_path + get_file_type(file, file_path)
         zip_archive.writestr(file_path, file.content, compress_type=ZIP_DEFLATED)
 
         # if download successful, remove the url from the set of download misfires
@@ -295,6 +302,27 @@ def download_files_to_zip(url, headers, zip_archive, download_fails, file_path=N
     # if download unsuccessful, add url to set of download misfires
     except requests.exceptions.ConnectionError:
         download_fails.update({url: file_path})
+
+
+def get_file_type(file, file_path):
+    """
+    Given a file downloaded via requests, finds its extension/file type.
+
+    :param file: a requests object pulled from e.g. downloaded_file = requests.get(url, headers=header)
+    :param file_path: str, showing where in zip archive file should go; contains unit and date info
+    :return: str: '.doc', '.docx', '.pdf'
+    """
+
+    if 'pdf' in file.headers.get('content-type'):
+        ext = '.pdf'
+    elif 'octet-stream' in file.headers.get('content-type'):
+        ext = '.docx'
+    elif 'ms-word' in file.headers.get('content-type'):
+        ext = '.doc'
+    else:
+        print(re.findall('filename=(.+)', file.headers.get('content-disposition'))[0])  # print the filename
+        raise Exception("UNKNOWN FILE TYPE")
+    return ext
 
 
 def retry_failed_downloads(header, zip_archive, download_fails):
