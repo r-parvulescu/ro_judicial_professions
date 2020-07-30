@@ -75,7 +75,7 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
     # make tables for professional inheritance
     # different professions have different sizes and structures, so different name rank and year window parameters
     prof_name_ranks = {'executori': (2, 5, 6, 0), 'notaries': (3, 7, 14, 15, 0),
-                       'judges': (4, 18, 36, 37, 0), 'prosecutors': (2, 12, 24, 25, 0)}
+                       'judges': (4, 18, 36, 37, 0), 'prosecutors': (2, 12, 23, 24, 0)}
     prof_year_windows = {'executori': 1000, 'notaries': 1000, 'judges': 5, 'prosecutors': 5}
     for num_top_names in prof_name_ranks[profession]:
         # one run with, one run without robustness check

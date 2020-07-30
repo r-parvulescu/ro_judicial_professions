@@ -521,7 +521,7 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
             if old_pers_area in pids_chamber_dict[rec_pid]:
                 # if the surname is not among the most common
                 if sn not in common_surnames:
-                    # if there's at least one name in common
+                    # if there's at least one shared surname
                     if len(rec_sns & old_pers_sns) > 0:
 
                         town_col_idx = helpers.get_header(profession, 'preprocess').index('localitatea')
@@ -541,13 +541,15 @@ def kin_match(recruit_data, old_pers_data, pids_chamber_dict, common_surnames, p
         else:  # JUDGES AND PROSECUTORS
             # if recruit's first area and other person's current area are the same
             if old_pers_area == rec_entry_area:
-                # if there's at least one name in common, match
-                if len(rec_sns & old_pers_sns) > 0:
-                    matches.add(True)
+                # if the surname is not among the most common
+                if sn not in common_surnames:
+                    # if there's at least one name in common, match
+                    if len(rec_sns & old_pers_sns) > 0:
+                        matches.add(True)
 
-            else:  # if the surname is common, need match on at least two surnames
-                if len(rec_sns & old_pers_sns) > 1:
-                    matches.add(True)
+                else:  # if the surname is common, need match on at least two surnames
+                    if len(rec_sns & old_pers_sns) > 1:
+                        matches.add(True)
 
     # if there's at least one match, return True
     return True if True in matches else False
