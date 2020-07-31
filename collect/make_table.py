@@ -11,6 +11,8 @@ import os
 import csv
 import itertools
 import operator
+import tempfile
+import zipfile
 import numpy as np
 import pandas as pd
 import re
@@ -19,9 +21,6 @@ import camelot
 from collect import text_processors
 from preprocess.workplace import workplace
 from helpers import helpers
-
-
-# TODO make it work from just memory so you don't have to unzip anything
 
 
 def combine_profession_tables(preprocessed_dir, out_path):
@@ -114,20 +113,26 @@ def make_pp_table(in_dir, out_path, profession):
     # initialise a dict of person-period tables, according to the time-grain of the table
     # (i.e. person-year vs person-month)
     ppts = {'year': ([], '_year.csv'), 'month': ([], '_month.csv')}
-    directories = os.listdir(in_dir) if profession == 'judges' or profession == 'prosecutors' \
-        else [in_dir]
+    zipped_dbs = os.listdir(in_dir)
+
     file_count = 0
-    for d in directories:
-        # if int(re.search(r'([1-2][0-9]{3})', d).group(1)) < 2005:  # to use only pre-2005 data
-        dir_abs_path = in_dir + '/' + d
-        for root, subdirs, files in os.walk(dir_abs_path):
-            for file in files:
-                if file_count < 3000:
-                    file_count += 1
-                    file_path = root + os.sep + file
-                    print(file_count, '|', file)
-                    people_periods_dict = triage(file_path, profession)
-                    [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
+    for db in zipped_dbs:
+        db_abs_path = in_dir + '/' + db
+
+        # work in memory: unzip data files into tempdir, extract data, temp directory gone after use
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            with zipfile.ZipFile(db_abs_path, 'r') as zip_ref:
+                zip_ref.extractall(tmpdirname)
+
+            # if int(re.search(r'([1-2][0-9]{3})', db).group(1)) < 2005:  # to use only pre-2005 data
+            for root, subdirs, files in os.walk(tmpdirname):
+                for file in files:
+                    if file_count < 3000:
+                        file_count += 1
+                        file_path = root + os.sep + file
+                        print(file_count, '|', file)
+                        people_periods_dict = triage(file_path, profession)
+                        [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
     # write to csv
     head = helpers.get_header(profession, 'collect')
