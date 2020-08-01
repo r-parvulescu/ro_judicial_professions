@@ -30,9 +30,10 @@ def get_header(profession, stage):
                                    "ca cod", "trib cod", "jud cod", "nivel"],
 
                    'executori': ["cod rând", "cod persoană", "nume", "prenume", "sex", "sediul", "an", "camera",
-                                 "localitatea", "stagiu", "altele"],
+                                 "localitatea", "stagiu", "altele", "moştenitor"],
 
-                   'notaries': ["cod rând", "cod persoană", "nume", "prenume", "sex", "an", "camera", "localitatea"]}
+                   'notaries': ["cod rând", "cod persoană", "nume", "prenume", "sex", "an", "camera", "localitatea",
+                                "moştenitor"]}
 
         head = headers[profession]
 
@@ -86,8 +87,8 @@ def deduplicate_list_of_lists(list_of_lists):
     put them in a set, them turn set elements to list and add them all to another list.
 
     :param list_of_lists: what it sounds like
-    :return list of lists without duplicate rows (i.e. inner lists)
+    :return list of lists without duplicate rows (i.e. duplicate inner lists)
     """
-    # inner list comprehension turns everythign to a string to avoid concat errors, e.g. string + int
-    uniques = ['|'.join([str(entry) for entry in row]) for row in list_of_lists]
+    # inner list comprehension turns everything to a string to avoid concat errors, e.g. string + int
+    uniques = set(['|'.join([str(entry) for entry in row]) for row in list_of_lists])
     return [row.split('|') for row in uniques]
