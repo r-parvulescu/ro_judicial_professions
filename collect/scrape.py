@@ -293,6 +293,7 @@ def download_files_to_zip(url, header, zip_archive, download_fails, file_path=No
             file_path = '/' + url[40:44] + '/' + url[37:39] + '/' + url[34:]
         else:
             file_path = file_path + get_file_type(file, file_path)
+            # TODO convert docx to doc as they appear
         zip_archive.writestr(file_path, file.content, compress_type=ZIP_DEFLATED)
 
         # if download successful, remove the url from the set of download misfires

@@ -43,7 +43,7 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
     # for prosecutors and judges only
     if profession == 'prosecutors' or profession == 'judges':
         career_climbers_stars_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
-                                    first_x_years=10, )
+                                    first_x_years=10)
 
         # make table for extent of career centralisation around capital city appellate region, per year per unit
         career_movements_table(table, profession, "ca cod", out_dir_mob)
@@ -77,13 +77,14 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
     prof_name_ranks = {'executori': (2, 5, 6, 0), 'notaries': (3, 7, 14, 15, 0),
                        'judges': (4, 18, 36, 37, 0), 'prosecutors': (2, 12, 23, 24, 0)}
     prof_year_windows = {'executori': 1000, 'notaries': 1000, 'judges': 5, 'prosecutors': 5}
+    '''
     for num_top_names in prof_name_ranks[profession]:
         # one run with, one run without robustness check
         profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                      num_top_names=num_top_names, multi_name_robustness=False)
         profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                      num_top_names=num_top_names, multi_name_robustness=True)
-
+    '''
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
     """
@@ -199,6 +200,10 @@ def entry_exit_unit_table(person_year_table, start_year, end_year, profession, u
     :param out_dir: directory where the table will live
     :return: None
     """
+    # if we look at entry cohorts avoid left censor and include right censor (which function ignores by default)
+    if entry:
+        start_year += 1
+        end_year += 1
 
     # get data on cohorts by year and unit
     cohorts_per_unit = descriptives.pop_cohort_counts(person_year_table, start_year, end_year, profession,

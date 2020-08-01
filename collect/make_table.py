@@ -182,7 +182,7 @@ def triage(in_file_path, profession):
 
     if in_file_path[-3:] == 'pdf':
         year, month = text_processors.get_year_month(in_file_path)
-        if "PMCMA" not in in_file_path:  # military prosecutors, skip for now
+        if ("PMCMA" not in in_file_path) and ('PCMA' not in in_file_path):  # military prosecutors, skip for now
             pps['month'].extend(get_pdf_people_periods(in_file_path, year, month))
 
     if in_file_path[-3:] == 'doc':
@@ -329,7 +329,7 @@ def get_pdf_people_periods(in_file_path, year, month):
                 parquet = text_processors.space_name_replacer(parquet, text_processors.parquet_names_transict)
 
                 # for now, avoid military parquets
-                if parquet != 'SPM':
+                if parquet != 'SPM' and 'MILITAR' not in parquet:
 
                     # avoid junk input, e.g. fullname = "A1" in 2017-09-PCA_Timisoara.pdf
                     # also "Post rezervat" in 2018-02-PCA_Cluj.pdf
@@ -337,10 +337,11 @@ def get_pdf_people_periods(in_file_path, year, month):
                         surnames, given_names = text_processors.get_prosecutor_names(row[0])
                         # words that sneak in due to improper formatting
                         given_names = given_names.replace("execuţie", '').replace('conducere', '')
+                        surnames = surnames.replace("execuţie", '').replace('conducere', '').replace('art.134', '')
                         # some double maiden names are separated by a comma
                         surnames = surnames.replace(',', ' ')
                         surnames, given_names = text_processors.prosecs_problem_name_handler(surnames, given_names)
-                        person_periods.append([surnames, given_names, parquet, year, month])
+                        person_periods.append([surnames.strip(), given_names.strip(), parquet, year, month])
                     else:
                         print(row[0])
     else:

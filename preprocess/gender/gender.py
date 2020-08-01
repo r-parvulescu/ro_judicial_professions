@@ -41,7 +41,7 @@ def get_gender(given_names, row, gender_dict):
     return person_gender
 
 
-def make_gender_dict(csv_person_period_table):
+def update_gender_dict(csv_person_period_table):
     """
     Updates an existing gender dictionary: whenever it finds a given name not in the dictionary it
     prompts you for a gender for that given name: 'm', 'f', 'dk' (don't know) or 'surname', since sometimes the parser

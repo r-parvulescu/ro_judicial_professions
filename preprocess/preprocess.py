@@ -12,6 +12,7 @@ from preprocess import sample
 from preprocess import pids
 from preprocess.workplace import workplace
 from preprocess.gender import gender
+from preprocess.inheritance import inheritance
 from helpers import helpers
 
 
@@ -80,6 +81,10 @@ def preprocess(in_directory, pop_out_path, continuity_out_path, std_log_path, pi
         # for spurious reasons) and add unique IDs
         ppts['year'][0] = pids.pids(ppts['year'][0], profession, pids_log_path)
 
+    # add column indicating whether a person inherited their profession; for now only for executori and notaries
+    if profession == 'notaries' or profession == 'executori':
+        ppts['year'][0] = add_inheritance_status(ppts['year'][0], profession, year_window=1000)
+
     # write the preprocessed table to disk
     write_preprocessed_to_disk(ppts['year'][0], pop_out_path, profession)
 
@@ -144,6 +149,33 @@ def add_workplace_profile(person_period_table, profession):
             row[:6] + workplace.get_workplace_profile(row[4], workplace_codes_dict))  # workplace = row[4]
 
     return ppt_with_wp
+
+
+def add_inheritance_status(person_period_table, profession, year_window=1000):
+    """
+    Add column indicating whether or not an individual (i.e. at the person-ID level) inherited their profession.
+
+    :param person_period_table: a person-period table, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param year_window: int, how many years back we look for matches, e.g. "6" means we look for matches in six years
+                        prior to your joining the profession; default is "1000", i.e. look back to beginning of data
+    :return: a person-period table (as list of lists) with an column for workplace profile inheritor status
+    """
+
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+
+    # get the set of inheritors
+    inheritor_set = inheritance.profession_inheritance(person_period_table, profession, year_window=year_window)
+
+    # initialise new person-period table with inheritance values
+    ppt_with_inher = []
+
+    # now append the inheritance value/column to each person-period
+    for pers_year in person_period_table:
+        ppt_with_inher.append(pers_year + [1]) if pers_year[pid_col_idx] in inheritor_set \
+            else ppt_with_inher.append(pers_year + [0])
+
+    return ppt_with_inher
 
 
 def reshape_to_person_years(person_table, profession):

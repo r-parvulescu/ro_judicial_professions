@@ -40,6 +40,7 @@ def clean(ppt, change_dict, range_years, year, profession):
     change_dict['overview'].append(['NUMBER OF UNIQUE FULL NAMES AT BEGINNING', preclean_num_fullnames])
 
     # let us know if we're working on year or month table
+    print('PROFESSION: ', profession)
     print('  CLEANING YEAR TABLE') if year else print('CLEANING MONTH TABLE')
     print('    TABLE LENGTH AT BEGINNING: ', len(ppt))
     print('    NUMBER OF UNIQUE FULL NAMES AT BEGINNING: ', preclean_num_fullnames)
@@ -222,7 +223,7 @@ def move_surname(person_period_table, change_dict, time):
             else:
                 # eliminate parentheses in all other surnames too
                 surname = row[0].replace('(', '').replace(')', '')
-                corrected_data_table.append([surname] + row[1:])
+                corrected_data_table.append([surname.strip()] + row[1:])
 
     return helpers.deduplicate_list_of_lists(corrected_data_table)
 
@@ -386,14 +387,24 @@ def lengthen_name(person_period_table, profession, change_dict, time, range_year
             # SECOND IF CONDITION FOR REPLACEMENT
             # don't put in known exceptions to name lengthening, per profession
 
-            if len(longest_n.split()) != len(row[name_idx].split()) \
-                    and (profession == 'executori' and longest_n not in executori_name_extension_exceptions):
+            extension_exceptions = {'executori': executori_name_extension_exceptions, 'notaries': [],
+                                    'judges': [], 'prosecutors': []}
 
-                long_name_table.append([longest_n] + row[1:]) if surname \
-                    else long_name_table.append([row[0]] + [longest_n] + row[2:])
-                changed_names.add(row[0] + ' | ' + row[1])
+            if len(longest_n.split()) != len(row[name_idx].split()):  # first condition
 
-            else:
+                if longest_n not in extension_exceptions[profession]:  # second condition
+
+                    if surname:  # handle surname and given name changes separately
+                        long_name_table.append([longest_n] + row[1:])
+                    else:
+                        long_name_table.append([row[0]] + [longest_n] + row[2:])
+
+                    changed_names.add(row[0] + ' | ' + row[1])  # add to change set
+
+                else:  # leave unchanged
+                    long_name_table.append(row)
+
+            else:  # leave unchanged
                 long_name_table.append(row)
 
         # update the change log
@@ -503,7 +514,7 @@ def standardise_long_full_names(person_period_table, change_dict, time):
     # initialise the translation dictionary that we'll use for name updating
     trans_dict = {}
 
-    # if full names differ by 1 character and at least one surname has 4+ letters (avoids MOS --> POP situations),
+    # if full names differ by 1 character and at least one surname has 4+ letters (avoids MOȘ --> POP situations),
     # use the version that appears more often
     fns_1apart = pairwise_ldist(set(full_names), 1)
     for fn_pair in fns_1apart:
@@ -727,7 +738,7 @@ prosecutors_fn_transdict = {"ARUNCUTEAN | IONELIA": "ARUNCUTEAN | IONELA", "BALO
                             "VASILACHI | LUMINIŢA": "VASILACHE | LUMINIŢA", "VEŞTEMEAN | IOAN": "VEŞTEMEAN | ION",
                             "VLADU | MINODORA": "VLAD | MINODORA", "VOICU | ADRIAN": "VOICU | ADRIANA",
                             "VORONEANU | DENISIA": "VORONEANU | DENISA", "ŞANDRU | ION": "ŞANDRU | IOAN",
-                            "GHIMIŞ ROATEŞ | ANTON MIRON": "GHIMIŞ ROATEŞ | ADRIAN MIRON"
+                            "GHIMIŞ ROATEŞ | ANTON MIRON": "GHIMIŞ ROATEŞ | ADRIAN MIRON",
                             }
 
 executori_fn_transdict = {
@@ -754,7 +765,8 @@ executori_fn_transdict = {
     "CONSTANTIN STOICA | ADRIAN": "STOICA | ADRIAN CONSTANTIN", "JALBĂ | GEORGINA": "JALBĂ | GEORGIANA NICOLETA",
     "GOGOAŞE POPESCU | BEBE FLORIN": "GOGOAŞE POPESCU | BEBE FLORINEL", "SIMA | ION": "PINTEALĂ SIMA | ION",
     "GHIŢAN PINTEALĂ | ANDRADA GEORGIANA": "GHIŢAN PINTEALĂ SIMA | ANDRADA GEORGIANA",
-    "PINTEALĂ SIMA | ANDRADA GEORGIANA": "GHIŢAN PINTEALĂ SIMA | ANDRADA GEORGIANA"
+    "PINTEALĂ SIMA | ANDRADA GEORGIANA": "GHIŢAN PINTEALĂ SIMA | ANDRADA GEORGIANA",
+    "POST (FRUNZĂALEXANDRU) | REZERVAT": "FRUNZĂ | ALEXANDRU"
 }
 
 

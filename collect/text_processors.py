@@ -158,7 +158,7 @@ given_name_diacritics_transdict = {
     "RAZVAN": "RĂZVAN", "STANCESCU": "STĂNCESCU", "ENIKO": "ENIKŐ", "MANDICA": "MANDICĂ",
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
-    "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA"
+    "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA", "MADALIN": "MĂDĂLIN"
 }
 
 # HELPERS FOR JUDGES #
@@ -591,6 +591,10 @@ def get_parquet_name(lines, split_mark):
             parquet_name = "PARCHETUL DE PE LÂNGĂ ÎNALTA CURTE DE CASAŢIE ŞI JUSTIŢIE"
         elif "TRIBUNALUL PENTRU MINORI" in lines[0]:
             parquet_name = "PARCHETUL DE PE LÂNGĂ TRIBUNALUL PENTRU MINORI ŞI FAMILIE BRAŞOV"
+        elif "PMTM" in parquet_name:
+            parquet_name = parquet_name.replace('PMTM', 'PARCHETUL MILITAR DE PE LÂNGĂ TRIBUNALUL MILITAR')
+        elif "PMCMA" in parquet_name:
+            parquet_name = parquet_name.replace('PMTM', 'PARCHETUL MILITAR DE PE LÂNGA CURTEA DE APEL MILITARĂ')
         else:
             parquet_name = (split_mark + lines[0]).replace('|', '').strip()
             parquet_name = parquet_name.replace('-', ' ').translate(str.maketrans('', '', string.punctuation))
