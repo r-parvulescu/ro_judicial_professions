@@ -6,6 +6,7 @@ import operator
 import itertools
 import statistics
 import pandas as pd
+from helpers import helpers
 
 
 def person_years(person_month_table, month, change_dict):
@@ -18,7 +19,7 @@ def person_years(person_month_table, month, change_dict):
     observations, this approach guards against people looking like they've retired, when really they were simply not
     recorded for the sampling month.
 
-    NB: there are people in the employment who had the same name at the same time; this is a deduplication issue that
+    NB: there are people in the employment rolls who where in two places at once; this is a deduplication issue that
     is explicitly dealt with later. This function groups such people together, so to avoid deduplicating now, if
     a person-year contains multiple observations for the same month, use all of them.
 
@@ -138,31 +139,81 @@ def month_availability(person_month_table, profession):
     year_months.to_csv(out_file_name)
 
 
-def set_interyear_mobility(person_year_table):
+def mo_yr_sample(person_month_table, profession, months, years):
     """
-    ads a column indicating if the person-year (row) featured inter-unit occupational mobility
-    NB: even though mobility is determined by comparing two years, by convention I attribute mobility to the former
-        year
+    Sample only the person-months from the specified months in the specified years. For the example values below,
+    we would sample person-years from April, July, and December of 2006, 2007, and 2008.
+
+    NB: works only on the fully preprocessed table
+
+    :param person_month_table: table of person-months, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param months: iterable of ints for months (1-12), e.g. [4 ,7, 12]
+    :param years: iterable of ints for years, e.g. [2006, 2007, 2008]
+    :return: a person-month table with observations only from the specified months and years
     """
-    person_year_table.sort(key=operator.itemgetter(0, 3))
-    person_bins = [g for k, [*g] in itertools.groupby(person_year_table, key=operator.itemgetter(0))]
-    table_with_mobility = []
-    for person in person_bins:
-        if len(person) == 1:  # only one year per person, can't determine mobility
-            table_with_mobility.append(person[0][:3] + ['NA'] + person[0][3:])
-            continue
-        for idx, year in enumerate(person):
-            if idx < len(person) - 1:
-                if person[idx][4] != person[idx + 1][4]:  # if tomorrow's unit is different from today
-                    if person[idx][-1] < person[idx + 1][-1]:  # if tomorrow's unit level is higher
-                        moved = 'up'
-                    elif person[idx][-1] == person[idx + 1][-1]:  # if tomorrow's unit level is the same
-                        moved = 'across'
-                    else:  # if tomorrow's unit level is lower
-                        moved = 'down'
-                else:  # if tomorrow's unit is the same as today
-                    moved = '0'
-            else:  # end of person sequence, i.e. retirement
-                moved = "out"
-            table_with_mobility.append(person[idx][:5] + [moved] + person[idx][5:])
-    return table_with_mobility
+    months, years = set(months), set(years)
+    mon_idx = helpers.get_header(profession, 'collect')['lună']
+    year_idx = helpers.get_header(profession, 'collect')['an']
+
+    # initialise sampled person-month table
+    sampled_pm_table = []
+
+    for pm in person_month_table:
+        if int(pm[mon_idx]) in months and int(pm[year_idx]) in years:
+            sampled_pm_table.append(pm)
+    return sampled_pm_table
+
+
+def continuity_sample(person_year_table, time_period, profession):
+    """
+    There are several points in time in which my datasets become increasingly restricted, e.g. before 2005 I only have
+    data on half of the parquets, but after 2005 I have data on all the parquets.
+
+    This functions samples data based on which institutions/units have CONTINUE across a pre-defined time period;
+    period bounds are included. For example, if my whole data i 1990-2010, but my time-period is 1995-2007, keep only
+    those units for which we have data for both 1995 and 2007 (on the assumption that we also have data for all the
+    years in between).
+
+    The point is to make across-time comparison meaningful, since we're just studying those units that are there for
+    the whole period, and not muddling things up by also trying to handle units that (dis)appear partway through.
+
+    NB: units may appear and disappear over the time-period because
+        a) the units were disbanded, e.g. Scorniceşti court
+        b) the units were founded, e.g. DIICOT
+        c) I do not have data on those units for the whole period
+
+    This function only returns data on units that were there throughout the entire period for which we have data.
+    It does not distinguish between units with incomplete data due to substantive reasons (i.e. they were founded
+    part-way through) as opposed to research reasons (i.e. we couldn't obtain full-period data for that unit).
+
+    NB: as of 03.08.2020 this function is only meant to work with judges and prosecutors; have complete data for the
+    entire observation periods for the other professions
+
+    :param person_year_table: a table, as a list of lists, where year row is a person-period (e.g. a person-month)
+    :param time_period: tuple of ints, boundary years of the time period, e.g. (2005, 2015)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a person-year table with continuity of allowable workplaces
+    """
+
+    year_idx = helpers.get_header(profession, 'preprocess').index('an')
+    unit_name_idx = helpers.get_header(profession, 'preprocess').index('instituţie')
+
+    # make two sets: one of unit names that appear in the first year of the period, another set of unit names appearing
+    # in the last year of the period
+    first_year_unit_names = {py[unit_name_idx] for py in person_year_table
+                             if int(py[year_idx]) == time_period[0]}
+    last_year_unit_names = {py[unit_name_idx] for py in person_year_table
+                            if int(py[year_idx]) == time_period[1]}
+
+    # continuity units are those with data for both the first and the last years of the specified time period
+    continuity_unit_names = first_year_unit_names & last_year_unit_names
+
+    # only keep person-years whose year value fall within the specified time period
+    period_years = set([y for y in range(time_period[0], time_period[1] + 1)])
+    period_table = [py for py in person_year_table if int(py[year_idx]) in period_years]
+
+    # and which are associated with units which were there for the whole period
+    period_unit_continuity_table = [py for py in period_table if py[unit_name_idx] in continuity_unit_names]
+
+    return period_unit_continuity_table

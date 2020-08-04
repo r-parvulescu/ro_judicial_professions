@@ -11,12 +11,13 @@ from describe import descriptives
 from helpers import helpers
 
 
-def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
+def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
              profession, start_year, end_year, unit_type=None):
     """
     Generate basic descriptives , and write them to disk.
 
-    :param in_file_path: path to the base data file
+    :param pop_in_file_path: path to the population-level data file
+    :param sampling_scheme: str, what kind of sample we want from the population-level base data
     :param out_dir_tot: string, directory where the descriptive files on total counts will live
     :param out_dir_mob: string, directory where the descriptive files on mobility will live
     :param out_dir_inher: string, directory where the descriptive files on inheritance will live
@@ -30,8 +31,7 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
     :return: None
     """
 
-    with open(in_file_path, 'r') as infile:
-        table = list(csv.reader(infile))[1:]  # start from first index to skip header
+    table = helpers.get_sample(pop_in_file_path, sampling_scheme, profession)
 
     # make table of total counts per year
     year_counts_table(table, start_year, end_year, profession, out_dir_tot)
@@ -77,14 +77,14 @@ def describe(in_file_path, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inh
     prof_name_ranks = {'executori': (2, 5, 6, 0), 'notaries': (3, 7, 14, 15, 0),
                        'judges': (4, 18, 36, 37, 0), 'prosecutors': (2, 12, 23, 24, 0)}
     prof_year_windows = {'executori': 1000, 'notaries': 1000, 'judges': 5, 'prosecutors': 5}
-    '''
+
     for num_top_names in prof_name_ranks[profession]:
         # one run with, one run without robustness check
         profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                      num_top_names=num_top_names, multi_name_robustness=False)
         profession_inheritance_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                      num_top_names=num_top_names, multi_name_robustness=True)
-    '''
+
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
     """

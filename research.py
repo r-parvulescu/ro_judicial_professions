@@ -3,14 +3,14 @@ One file to click-and-play for the research pipeline: collect the data, preproce
 then do statistical analysis (to come).
 """
 
-from collect import make_table
+from collect import make_table, scrape
 from preprocess import preprocess
 from describe import describe
 from local import root
+from pathlib import Path
 
 # DIRECTORY STRUCTURE FOR RESEARCH WORKFLOW #
 
-# NB: this script assumes that user has ALREADY created this structure
 root = root
 
 trunks = {'dispersed': 'data/dispersed/',
@@ -18,99 +18,64 @@ trunks = {'dispersed': 'data/dispersed/',
           'preprocessed': 'data/preprocessed/',
           'descriptives': 'analysis/descriptives/'}
 
-leaves = {'judges': {'dispersed': 'magistrati/code_ready/judges',
+leaves = {'judges': {'dispersed': {'raw': 'magistrati/compressed_data_clean/judges_raw_clean/',
+                                   'scrape log': 'magistrati/compressed_data_cleaned/scrape_log.txt'},
                      'collected': {
                          'file': 'judges/judges',
                          'dir': 'judges/'
                      },
                      'preprocessed': {
                          'population': 'population/population_judges_preprocessed.csv',
-                         'sample': 'sample/sample_judges_preprocessed.csv',
                          'standardise': 'standardise_logs_tests/standardise_logs_output_judges/',
                          'pids': 'pids_logs_tests/pids_logs_judges/'
                      },
-                     'descriptives': {
-                         'population': {
-                             'totals': 'descriptives_judges/population/totals/',
-                             'mobility': 'descriptives_judges/population/mobility/',
-                             'inheritance': ''
-                         },
-                         'sample': {
-                             'totals': 'descriptives_judges/sample/totals/',
-                             'mobility': 'descriptives_judges/sample/mobility/',
-                             'inheritance': ''
-                         }
-                     }
+                     'descriptives': 'descriptives_judges/'
+
                      },
-          'prosecutors': {'dispersed': 'magistrati/code_ready/prosecutors',
+          'prosecutors': {'dispersed': {'raw': 'magistrati/compressed_data_clean/prosecutors_raw_clean/',
+                                        'scrape log': 'magistrati/compressed_data_cleaned/scrape_log.txt'},
                           'collected': {
                               'file': 'prosecutors/prosecutors',
                               'dir': 'prosecutors/'
                           },
                           'preprocessed': {
                               'population': 'population/population_prosecutors_preprocessed.csv',
-                              'sample': 'sample/sample_prosecutors_preprocessed.csv',
                               'standardise': 'standardise_logs_tests/standardise_logs_output_prosecutors/',
                               'pids': 'pids_logs_tests/pids_logs_prosecutors/'
                           },
-                          'descriptives': {
-                              'population': {
-                                  'totals': 'descriptives_prosecutors/population/totals/',
-                                  'mobility': 'descriptives_prosecutors/population/mobility/',
-                                  'inheritance': ''
-                              },
-                              'sample': {
-                                  'totals': 'descriptives_prosecutors/sample/totals/',
-                                  'mobility': 'descriptives_prosecutors/sample/mobility/',
-                                  'inheritance': ''
-                              }
-                          }
+                          'descriptives': 'descriptives_prosecutors/'
                           },
 
-          'executori': {'dispersed': 'executori_judecatoresti/code_ready',
+          'executori': {'dispersed': {'raw': 'executori_judecatoresti/compressed_data_clean'},
                         'collected': {
                             'file': 'executori/executori',
                             'dir': 'executori/'
                         },
                         'preprocessed': {
                             'population': 'population/population_executori_preprocessed.csv',
-                            'sample': '',
                             'standardise': 'standardise_logs_tests/standardise_logs_output_executori/',
                             'pids': '/pids_logs_tests/pids_logs_executori/'
                         },
-                        'descriptives': {
-                            'population': {
-                                'totals': 'descriptives_executori/population/totals/',
-                                'mobility': 'descriptives_executori/population/mobility/',
-                                'inheritance': 'descriptives_executori/population/inheritance/'
-                            },
-                            'sample': ''}
+                        'descriptives': 'descriptives_executori/'
                         },
 
-          'notaries': {'dispersed': 'notari_publici/code_ready',
+          'notaries': {'dispersed': {'raw': 'notari_publici/compressed_data_clean'},
                        'collected': {
                            'file': 'notaries/notaries_persons',
                            'dir': 'notaries/'
                        },
                        'preprocessed': {
                            'population': 'population/population_notaries_preprocessed.csv',
-                           'sample': '',
                            'standardise': '',
                            'pids': ''
                        },
-                       'descriptives': {
-                           'population': {
-                               'totals': 'descriptives_notaries/population/totals/',
-                               'mobility': 'descriptives_notaries/population/mobility/',
-                               'inheritance': 'descriptives_notaries/population/inheritance/'
-                           },
-                           'sample': ''}
+                       'descriptives': 'descriptives_notaries/'
                        },
           'combined': {'preprocessed': {'population': 'population/population_combined_professions.csv',
                                         'sample': ''},
                        'descriptives': {
                            'population': 'descriptives_combined/population/',
-                           'sample': ''}
+                       }
                        }
           }
 
@@ -120,44 +85,54 @@ if __name__ == '__main__':
 
     # the dictionary of professions, the years for which each has data, and the units for deaggregated analyses
     professions_details = {'judges': {'range': (1988, 2020),
-                                      'units': ('ca cod', 'nivel')},
-                           'prosecutors': {'range': (1988, 2019),
-                                           'units': ('ca cod', 'nivel')},
+                                      'units': ('ca cod', 'nivel'),
+                                      'samples': ['population',
+                                                  'continuity_sample_1988']},
+                           'prosecutors': {'range': (1988, 2020),
+                                           'units': ('ca cod', 'nivel'),
+                                           'samples': ['population',
+                                                       'continuity_sample_1988']},
                            'executori': {'range': (2001, 2019),
-                                         'units': None},
+                                         'units': None,
+                                         'samples': ['population']},
                            'notaries': {'range': (1995, 2019),
-                                        'units': None}
+                                        'units': None,
+                                        'samples': ['population']}
                            }
 
     for prof, deets in professions_details.items():
 
+        # update data with recently uploaded materials from public, state, digital archives
+        # NB: only judges and prosecutors have such publicly available data
+        if prof in {'judges', 'prosecutors'}:
+            in_dir = root + trunks['dispersed'] + leaves[prof]['dispersed']['raw']
+            scrape_log = root + trunks['dispersed'] + leaves[prof]['dispersed']['scrape log']
+            scrape.update_db(in_dir, scrape_log, prof)
+
         # collect the data (which also does a first clean)
-        in_dir = root + trunks['dispersed'] + leaves[prof]['dispersed']
+        in_dir = root + trunks['dispersed'] + leaves[prof]['dispersed']['raw']
         out_path = root + trunks['collected'] + leaves[prof]['collected']['file']
         make_table.make_pp_table(in_dir, out_path, prof)
 
         # preprocess the data (add variables, standardise names, assign unique IDs, etc.)
         in_dir = root + trunks['collected'] + leaves[prof]['collected']['dir']
         pop_out_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['population']
-        sample_out_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['sample']
         std_log_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['standardise']
         pids_log_path = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['pids']
-        preprocess.preprocess(in_dir, pop_out_path, sample_out_path, std_log_path, pids_log_path, prof)
+        preprocess.preprocess(in_dir, pop_out_path, std_log_path, pids_log_path, prof)
 
-        # describe the data (make tables of descriptive statistics)
+        # describe the data, i.e. generate tables of descriptive statistics for different samples
         pop_in_file = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['population']
-        pop_out_dir_tot = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['totals']
-        pop_out_dir_mob = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['mobility']
-        pop_out_dir_inher = root + trunks['descriptives'] + leaves[prof]['descriptives']['population']['inheritance']
-        describe.describe(pop_in_file, pop_out_dir_tot, pop_out_dir_mob, pop_out_dir_inher, prof,
-                          deets['range'][0], deets['range'][1], deets['units'])
-
-        if prof == 'judges' or prof == 'prosecutors':
-            sample_in_file = root + trunks['preprocessed'] + leaves[prof]['preprocessed']['sample']
-            sample_out_dir_tot = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['totals']
-            sample_out_dir_mob = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['mobility']
-            sample_out_dir_inher = root + trunks['descriptives'] + leaves[prof]['descriptives']['sample']['inheritance']
-            describe.describe(sample_in_file, sample_out_dir_tot, sample_out_dir_mob, sample_out_dir_inher, prof,
+        for sample in deets['samples']:
+            # make directory tree for dumping the descriptives tables; NB: overwrites existing tree structure
+            sample_out_dirs = {'totals': '', 'entry_exit': '', 'mobility': '', 'inheritance': ''}
+            for d in sample_out_dirs:
+                path_end = sample + '/' + d + '/'
+                sample_out_dirs.update({d: root + trunks['descriptives'] + leaves[prof]['descriptives'] + path_end})
+            [Path(d).mkdir(parents=True, exist_ok=True) for d in sample_out_dirs.values()]
+            # generate the descriptives tables
+            describe.describe(pop_in_file, sample, sample_out_dirs['totals'], sample_out_dirs['entry_exit'],
+                              sample_out_dirs['mobility'], sample_out_dirs['inheritance'], prof,
                               deets['range'][0], deets['range'][1], deets['units'])
 
     # now do inter-professional comparisons
@@ -169,5 +144,6 @@ if __name__ == '__main__':
     make_table.combine_profession_tables(in_dir, prep_out_path)
 
     # then we look for transitions from one profession to the other, for a 3-year time window
-    descr_out_dir = root + trunks['descriptives'] + leaves['combined']['descriptives']['population']
-    describe.inter_profession_transfer_table(prep_out_path, descr_out_dir, 1)
+    combined_out_dir = root + trunks['descriptives'] + leaves['combined']['descriptives']['population']
+    Path(combined_out_dir).mkdir(parents=True, exist_ok=True)
+    describe.inter_profession_transfer_table(prep_out_path, combined_out_dir, 1)
