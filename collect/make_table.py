@@ -33,7 +33,7 @@ def combine_profession_tables(preprocessed_dir, out_path):
     NB: assumes that the name of the profession is in the file path.
 
     :param preprocessed_dir: string, path to directory where the preprocessed tables of the different professions live
-    "param out_path: str, path where the combined table will live
+    :param out_path: str, path where the combined table will live
     :return: None
     """
 

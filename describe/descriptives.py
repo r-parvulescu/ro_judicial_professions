@@ -52,8 +52,8 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
     cohort_counts = deepcopy(pop_counts)
 
     # get total counts
-    for person in person_year_table:
-        update_size_gender(pop_counts, person, start_year, end_year, profession, units, unit_type=unit_type)
+    for person_year in person_year_table:
+        update_size_gender(pop_counts, person_year, start_year, end_year, profession, units, unit_type=unit_type)
     percent_female(pop_counts, units, unit_type=unit_type)
 
     # then get cohort counts

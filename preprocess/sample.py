@@ -144,7 +144,7 @@ def mo_yr_sample(person_month_table, profession, months, years):
     Sample only the person-months from the specified months in the specified years. For the example values below,
     we would sample person-years from April, July, and December of 2006, 2007, and 2008.
 
-    NB: works only on the fully preprocessed table
+    NB: works only on the "collected" table
 
     :param person_month_table: table of person-months, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -153,8 +153,8 @@ def mo_yr_sample(person_month_table, profession, months, years):
     :return: a person-month table with observations only from the specified months and years
     """
     months, years = set(months), set(years)
-    mon_idx = helpers.get_header(profession, 'collect')['lună']
-    year_idx = helpers.get_header(profession, 'collect')['an']
+    mon_idx = helpers.get_header(profession, 'collect').index('lună')
+    year_idx = helpers.get_header(profession, 'collect').index('an')
 
     # initialise sampled person-month table
     sampled_pm_table = []
@@ -162,6 +162,7 @@ def mo_yr_sample(person_month_table, profession, months, years):
     for pm in person_month_table:
         if int(pm[mon_idx]) in months and int(pm[year_idx]) in years:
             sampled_pm_table.append(pm)
+    print(len(sampled_pm_table))
     return sampled_pm_table
 
 

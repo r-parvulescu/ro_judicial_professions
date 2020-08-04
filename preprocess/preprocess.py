@@ -16,15 +16,15 @@ from preprocess.inheritance import inheritance
 from helpers import helpers
 
 
-def preprocess(in_directory, pop_out_path, std_log_path, pids_log_path, profession):
+def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, profession):
     """
     Standardise data from person-period tables at different levels of time granularity (year and month levels),
     sample person-months to get person-years, combine this sample with the original year-level data, clean the
     combined table, assign every person-year a row ID gender, institution profile, and unique (row) ID, and finally
      assign each row a person-level unique ID. Write the combined, cleaned, and augmented person-year table to disk.
 
-    :param in_directory: string, directory where the data files lives
-    :param pop_out_path: path where we want the person-period table(s) of the whole population to live
+    :param in_directory: string, directory where the "collected" data files live
+    :param prep_table_out_path: path where we want the preprocessed person-period table(s) to live
     :param std_log_path: path where we want the logs from the standardisation to live
     :param pids_log_path: path where we want the logs from the unique-person-ID-giver to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -85,7 +85,7 @@ def preprocess(in_directory, pop_out_path, std_log_path, pids_log_path, professi
         ppts['year'][0] = add_inheritance_status(ppts['year'][0], profession, year_window=1000)
 
     # write the preprocessed table to disk
-    write_preprocessed_to_disk(ppts['year'][0], pop_out_path, profession)
+    write_preprocessed_to_disk(ppts['year'][0], prep_table_out_path, profession)
 
 
 def write_preprocessed_to_disk(person_year_table, out_path, profession):
