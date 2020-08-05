@@ -7,43 +7,55 @@ import json
 
 def get_workplace_profile(workplace, workplace_codes):
     """
-    Return the organisational code and level of each workplace.
+    Return the organisational code and hierarchical level of each workplace, i.e. the person's workplace profile.
 
     :param workplace: str, the full name of the workplace
     :param workplace_codes: the codes that locates each workplace within its organisational hierarchy
-    :return a list of the workplace code and the level (e.g. Low Court has level 1, High Court has Level 4)
+    :return a list of the workplace code and the level, e.g. ["CA5", "TB16", "J58", "1'] for "JUDECĂTORIA CLUJ"
     """
     code = workplace_codes[workplace.strip()]
-    level = get_unit_level(code)
+    level = get_workplace_level(code)
     return code + [level]
 
 
-def get_unit_level(unit_code):
+def get_workplace_level(workplace_code):
     """
-    return a table with a column for court level:
+    Get the level (in the organisational hierarchy) at which a certain workplace is located. This holds for court/judge
+    organisational hierarchy as well as parquet/prosecutor hierarchy (the two hierarchies mirror each other).
     1 = judecătorie (lowest level, one);
     2 = tribunal (second level);
     3 = curte de apel (third level);
     4 = înalta curte de casaţie şi justiţie (High Court, highest level)
+
+    :param workplace_code: a list containing three strings that uniquely locate that workplace within the court/parquet
+                           hierarchies, e.g., ["CA5", "TB16", "J58"] is the code for "JUDECĂTORIA CLUJ"
+    :return level: a string, one of 1, 2, 3, or 4
     """
-    if unit_code[-1] != '-88':
+    if workplace_code[-1] != '-88':
         level = '1'
-    elif unit_code[-2] != '-88':
+    elif workplace_code[-2] != '-88':
         level = '2'
-    elif unit_code[-3] != '-88':
+    elif workplace_code[-3] != '-88':
         level = '3'
     else:
         level = '4'
     return level
 
 
-def get_unit_codes(profession):
-    unit = ''
+def get_workplace_codes(profession):
+    """
+    Load and return a dict that associates each workplace name with a code locating it in its profession-specific
+    organisational hierarchy. E.g. "JUDECĂTORIA CLUJ" has code ["CA5", "TB16", "J58"].
+
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a dict where keys are workplace names and values are its unique code/location in its org hierarchy.
+    """
+    workplace_type = ''
     if profession == 'prosecutors':
-        unit = 'parquet'
+        workplace_type = 'parquet'
     if profession == 'judges':
-        unit = 'court'
-    unit_codes = 'preprocess/workplace/' + unit + '_codes.txt'
+        workplace_type = 'court'
+    unit_codes = 'preprocess/workplace/' + workplace_type + '_codes.txt'
     with open(unit_codes, 'r') as uc:
         return json.load(uc)
 
