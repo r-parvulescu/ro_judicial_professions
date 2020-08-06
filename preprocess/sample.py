@@ -162,7 +162,6 @@ def mo_yr_sample(person_month_table, profession, months, years):
     for pm in person_month_table:
         if int(pm[mon_idx]) in months and int(pm[year_idx]) in years:
             sampled_pm_table.append(pm)
-    print(len(sampled_pm_table))
     return sampled_pm_table
 
 
