@@ -133,7 +133,7 @@ def add_workplace_profile(person_period_table, profession):
     :return: a person-period table (as list of lists) with columns for the workplace profile
     """
     # load dictionary of workplace codes
-    workplace_codes_dict = workplace.get_unit_codes(profession)
+    workplace_codes_dict = workplace.get_workplace_codes(profession)
 
     # initialise the person-period table with workplace profiles
     ppt_with_wp = []

@@ -121,7 +121,7 @@ def year_counts_table(person_year_table, start_year, end_year, profession, out_d
                 if unit != 'grand_total':
                     # iterate over years:
                     for year, metrics in years.items():
-                        if start_year <= int(year) <= end_year - 1:  # stay within bounds
+                        if start_year <= int(year) <= end_year:  # stay within bounds
                             writer.writerow({"unit": unit, "year": year, "female": metrics['f'], "male": metrics["m"],
                                              "don't know": metrics['dk'], "total count": metrics['total_size'],
                                              "percent female": metrics['percent_female']})
