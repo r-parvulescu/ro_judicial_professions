@@ -154,9 +154,10 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
     # person-years (i.e. rows), and each row is a list
     distinct_persons = []
 
-    # initialise table of person-sequences that are sufficiently strange and/or rare that we don't trust the function
-    # to properly handle; later we'll inspect this table visually
-    odd_person_sequences = []
+    # initialise tables of unusual person-sequences that need special treatment; we inspect these tables visually
+    three_place_person_sequences = []
+    unable_to_split_person_sequences = []
+    filter_slip_person_sequences = []
 
     # initiate a counter to keep track of how many person years are add/removed by this function
     net_person_years = 0
@@ -181,25 +182,36 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
                 [years_and_workplaces[row[5]].append(row[7]) for row in ps]
 
             # CASE (F)
-            # if one year features 3+ workplaces, mark that person-sequence aside for manual inspection
-            # but otherwise don't touch it
+            # if one year features 3+ workplaces, run it through a corrector filter
             if max([len(v) for v in years_and_workplaces.values()]) > 2:
-                [odd_person_sequences.append(py) for py in ps]
-                odd_person_sequences.append(['\n'])
-                distinct_persons.append(ps)
+                three_plus_workplaces_to_remove = three_plus_workplaces_handle(ps, years_and_workplaces)
+
+                # if the filter picks something up, incorporate its removal orders into the master to_remove set
+                if three_plus_workplaces_to_remove:
+                    [to_remove.add(tr) for tr in three_plus_workplaces_to_remove]
+
+                # else, if the filter didn't pick anything up, save person sequence visual inspection and leave as is
+                else:
+                    [three_place_person_sequences.append(py) for py in ps]
+                    three_place_person_sequences.append(['\n'])
+                    distinct_persons.append(ps)
+
                 continue
 
             else:  # no year features more than two institutions
 
                 # CASE (G)
-                # if the overlap is of 3+ years, split up the person-year
+                # if the overlap is of 3+ years IN A CONTIGUOUS BLOCK, split up the person-year
+                # NB: if we have non-contiguous sets of one- or two-year overlaps, but the total number of
+                # overlap years is greater than two, just treat each overlap separately
+
                 if len(ps) - len(years_and_workplaces) > 2:
-                    sequences_split = split_sequences(profession, ps, change_log, odd_person_sequences)
+                    sequences_split = split_sequences(profession, ps, change_log, unable_to_split_person_sequences)
                     if sequences_split:
                         distinct_persons.extend(sequences_split)
                     continue
 
-                else:  # the overlap is of one or two years
+                else:  # the overlaps are of one or two years
 
                     # isolate the overlap years
                     overlap_years = {yr: wrk_plcs for yr, wrk_plcs in years_and_workplaces.items()
@@ -288,7 +300,7 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
 
                         else:
                             # the person-sequence has slipped through the filters, save for visual inspection
-                            odd_person_sequences.append(ps)
+                            filter_slip_person_sequences.append(ps)
 
             # now apply the removal orders to the person sequences, to remove the overlaps
 
@@ -334,11 +346,19 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
         else:  # add all the person-year sequences with no overlap years as they are to the list of distinct persons
             distinct_persons.append(ps)
 
-    # write to disk the table of odd sequences and the change logs
+    # write to disk tables of odd sequences, those in 3+ plus places at once and which slipped through all filters
 
-    odd_seqs = pd.DataFrame(odd_person_sequences)
-    odd_seqs_path = pids_log_path + profession + '_pids_odd_person_sequences.csv'
-    odd_seqs.to_csv(odd_seqs_path)
+    three_place_seqs = pd.DataFrame(three_place_person_sequences)
+    three_place_seqs_path = pids_log_path + profession + '_pids_three_place_person_sequences.csv'
+    three_place_seqs.to_csv(three_place_seqs_path)
+
+    filter_slip_seqs = pd.DataFrame(filter_slip_person_sequences)
+    filter_slip_seqs_path = pids_log_path + profession + '_pids_filter_slip_person_sequences.csv'
+    filter_slip_seqs.to_csv(filter_slip_seqs_path)
+
+    unable_to_split_seqs = pd.DataFrame(unable_to_split_person_sequences)
+    unable_to_split_seqs_path = pids_log_path + profession + '_pids_unable_to_split_person_sequences.csv'
+    unable_to_split_seqs.to_csv(unable_to_split_seqs_path)
 
     # print and save some general diagnostics
     print("     NUMBER OF DISTINCT PERSONS GOING IN: ", len(person_sequences))
@@ -346,6 +366,7 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
     print("     NUMBER OF DISTINCT PERSONS ADDED: ", len(distinct_persons) - len(person_sequences))
     print("     NET CHANGE IN PERSON-YEARS: ", net_person_years)
 
+    # write to disk the change logs
     change_log.append(['\n'])
     change_log.append(["NUMBER OF DISTINCT PERSONS GOING INTO CORRECT_OVERLAPS: ", len(person_sequences)])
     change_log.append(["NUMBER OF DISTINCT PERSONS COMING OUT OF CORRECT_OVERLAPS: ", len(distinct_persons)])
@@ -356,6 +377,66 @@ def correct_overlaps(person_year_table, profession, change_log, pids_log_path):
 
     # and return the list of distinct persons
     return distinct_persons
+
+
+def three_plus_workplaces_handle(person_sequence, years_and_workplaces):
+    """
+    Handles sequences in which one year features three or more workplaces, i.e. it looks like the person is in
+    at least three places at once.
+
+    Sometimes we're dealing with a situation where a workplace appears just once in the whole sequence, in that
+    tripled-up year, as below. In that case, just eliminate that unique workplace, on the assumption that it's a
+    glitch. Therefore, from
+
+
+    (A) THREE YEAR OVERLAP, ONE UNIQUE WORKPLACE
+
+    SURNAME    GIVEN NAME   INSTITUTION   YEAR
+
+    DERP       BOB JOE     ALPHA          2012
+    DERP       BOB JOE     ALPHA          2013
+    DERP       BOB JOE     BETA           2013
+    DERP       BOB JOE     ALPHA          2014
+    DERP       BOB JOE     GAMMA          2014
+    DERP       BOB JOE     BETA           2014
+    DERP       BOB JOE     BETA           2015
+
+    returns
+
+    SURNAME    GIVEN NAME   INSTITUTION   YEAR
+
+    DERP       BOB JOE     ALPHA          2012
+    DERP       BOB JOE     ALPHA          2013
+    DERP       BOB JOE     BETA           2013
+    DERP       BOB JOE     ALPHA          2014
+    DERP       BOB JOE     BETA           2014
+    DERP       BOB JOE     BETA           2015
+
+    :param person_sequence: a sequence of person-years sharing a unique person ID, as a list of lists
+    :param years_and_workplaces: a dict where keys are years and values are the associated workplaces for said year
+    :return: a list containing the year-workplace combo(s) to remove from the person years
+    """
+
+    # find the workplaces associated with three-workplace overlaps and their associated year
+    three_plus_workplaces_overlaps = {}
+    for year, workplaces in years_and_workplaces.items():
+        if len(workplaces) > 2:
+            three_plus_workplaces_overlaps.update({wp: year for wp in workplaces})
+
+    # get the year frequency of each workplace in the person-sequence
+    workplace_year_freqs = {}
+    for key, wrkplc_grp in itertools.groupby(sorted(person_sequence, key=operator.itemgetter(4)),
+                                             key=operator.itemgetter(4)):
+        wrkplc_grp_list = list(wrkplc_grp)
+        workplace_year_freqs.update({wrkplc_grp_list[0][4]: len(list(wrkplc_grp_list))})
+
+    # if a workplace in a three-year overlap set is associated with only one year, mark its person-year for exclusion
+    to_remove = []
+    for workplace, year in three_plus_workplaces_overlaps.items():
+        if workplace_year_freqs[workplace] == 1:
+            to_remove.append(str(year) + '-' + workplace)
+
+    return to_remove
 
 
 def if_transition(years_and_workplaces, overlap_years):
@@ -373,7 +454,6 @@ def if_transition(years_and_workplaces, overlap_years):
     years = sorted(list(years_and_workplaces))
 
     year_before, year_after = None, None
-
     # if there's only one year of overlap
     if len(overlap_years) == 1:
         ovrlp_yr_idx = years.index(list(overlap_years)[0])
@@ -396,19 +476,20 @@ def if_transition(years_and_workplaces, overlap_years):
         return {'transition': False, 'workplace_before': years_and_workplaces[year_before][0]}
 
 
-def split_sequences(profession, person_sequence, change_log, odd_person_sequences):
+def split_sequences(profession, person_sequence, change_log, unable_to_split_person_sequences):
     """
 
     NB: BUILT ONLY FOR SEQUENCES THAT FEATURE ONLY ONE NAME IN 2 PLACES, WILL NOT WORK FOR ONE NAME IN 3+ PLACES
 
     Takes a year-sorted sequence of person years that share a full name which is in two places at once,
-    and return two sequences, one for each place.
+    and returns two sequences, one for each place.
 
     I assume (heuristically) that distinct career sequences develop in the same Appellate Court area;
     elif they're in the same appellate area, then in the same Tribunal Area;
-    elif they're in the same Tribunal Area, then in different Local Courts
+    elif they're in the same Tribunal Area, then in different Local Courts.
+    That is, this is an assumption of a tendency towards career localism and continuity.
 
-    So, for example, the function should take this sequence with overlaps (CA == court area)
+    So, for example, the function should take this sequence with overlaps (where CA == court area)
 
     (A)
 
@@ -432,10 +513,14 @@ def split_sequences(profession, person_sequence, change_log, odd_person_sequence
     DERP       BOB JOE     ALPHA          2013  1           DERP        BOB JOE     BETA           2013  2
     DERP       BOB JOE     ALPHA          2014  1           DERP        BOB JOE     BETA           2014  2
 
+
+    This function can also deal with situations where overlaps are not cont
+
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param person_sequence: a year-ordered sequence of person-years sharing a full name; as a list of lists
     :param change_log: a list (to be written as a csv) marking the before and after states of the person-sequence
-    :param odd_person_sequences: a list of persons with odd characteristics, which we save for visual inspection
+    :param unable_to_split_person_sequences: a list of persons who for one year are in at least three different places,
+                                        which we save for visual inspection
     :return: a list of person-sequences; in the example above, a list with [B, C]
     """
 
@@ -466,9 +551,10 @@ def split_sequences(profession, person_sequence, change_log, odd_person_sequence
 
     # if you still don't get two groups do nothing, and save the person-sequence for visual inspection
     if len(p_seqs) != 2:
-        odd_person_sequences.append(['\n'])
-        odd_person_sequences.extend([py[1:3] + py[4:9] for py in sorted(person_sequence, key=operator.itemgetter(5))])
-        odd_person_sequences.append(['\n'])
+        unable_to_split_person_sequences.append(['\n'])
+        unable_to_split_person_sequences.extend([py[1:3] + py[4:9] for py in sorted(person_sequence,
+                                                                                    key=operator.itemgetter(5))])
+        unable_to_split_person_sequences.append(['\n'])
         return None
 
     # otherwise, update the change log and return the groups
