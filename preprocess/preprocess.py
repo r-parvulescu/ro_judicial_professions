@@ -47,10 +47,13 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, p
     # if there are month-level data, sample one month from the person-month data to get year-level data,
     # then combine the sample with the original year data
     # NB: the sampler drops the month column -- this is necessary for row deduplication to work properly
+    # NB: deduplicates because some person-years in both year- and month-level (sampled) data
     if ppts['month'][0]:
         sm = sample.get_sampling_month(profession)
         year_sampled_from_months = sample.person_years(ppts['month'][0], sm, change_dict)
         ppts['year'][0].extend(year_sampled_from_months)
+        # deduplicate; limit all rows to first four entries, for unknown reason sometimes nan's appear in fifth position
+        ppts['year'][0] = helpers.deduplicate_list_of_lists([row[:4] for row in ppts['year'][0]])
 
     # reshape the notaries table from person to person-years
     # standardisation, deduplication, assigning person-ids, can all be ignored for notaries; just add gender info
