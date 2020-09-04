@@ -3,6 +3,8 @@ Handy helper functions.
 """
 
 import csv
+import itertools
+from operator import itemgetter
 from preprocess import sample
 
 
@@ -116,3 +118,43 @@ def deduplicate_list_of_lists(list_of_lists):
     # inner list comprehension turns everything to a string to avoid concat errors, e.g. string + int
     uniques = set(['|'.join([str(entry) for entry in row]) for row in list_of_lists])
     return [row.split('|') for row in uniques]
+
+
+def cohort_name_lists(person_year_table, start_year, end_year, profession, entry=True, combined=False):
+    """
+    For each year in the range from start_year to end_year, return a list of full-names of the people that joined
+    the profession in that year.
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param start_year: int, year we start looking at
+    :param end_year: int, year we stop looking
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param entry: bool, True if we're getting data for entry cohorts, False if for exit cohorts
+    :param combined: bool, True if we're dealing with the table of combined professions
+    :return: a dict of years, where each value is a list of full-name tuples of the people who joined the profession
+             that year
+    """
+    stage = 'preprocess'
+    if combined:
+        profession, stage = 'all', 'combine'
+
+    pid_col_idx = get_header(profession, stage).index('cod persoană')
+    year_col_idx = get_header(profession, stage).index('an')
+    surname_col_idx = get_header(profession, stage).index('nume')
+    given_name_col_idx = get_header(profession, stage).index('prenume')
+
+    # make a dict, key = year, value = empty list
+    cohorts = {year: [] for year in range(start_year, end_year + 1)}
+    # group by people
+    people = [person for k, [*person] in itertools.groupby(sorted(person_year_table, key=itemgetter(pid_col_idx)),
+                                                           key=itemgetter(pid_col_idx))]
+
+    # append the full name of the first year of each person to its cohort
+    for person in people:
+        edge_person_year = person[0] if entry else person[-1]
+
+        if start_year <= int(edge_person_year[year_col_idx]) <= end_year:
+            cohorts[int(edge_person_year[year_col_idx])].append(
+                edge_person_year[surname_col_idx] + ' | ' + edge_person_year[given_name_col_idx])
+
+    return cohorts
