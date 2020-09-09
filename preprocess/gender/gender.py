@@ -41,7 +41,7 @@ def get_gender(given_names, row, gender_dict):
     return person_gender
 
 
-def update_gender_dict(csv_person_period_table):
+def update_gender_dict(person_period_table):
     """
     Updates an existing gender dictionary: whenever it finds a given name not in the dictionary it
     prompts you for a gender for that given name: 'm', 'f', 'dk' (don't know) or 'surname', since sometimes the parser
@@ -52,30 +52,29 @@ def update_gender_dict(csv_person_period_table):
     NB: to use the new dictionary, need to manually delete the old one and rename the new gender dict to the old.
     Did this to avoid overwriting at all costs, since making a new gender dictionary from scratch is very tedious.
 
-    :param csv_person_period_table: string, path to a person-period table in a csv
+    :param person_period_table: string, path to a person-period table in a csv
     :return: None
 
     """
 
-    # laod the existing gender dict
+    # load the gender dict
     gender_dict = get_gender_dict()
 
-    # go through files, building gender dict
-    with open(csv_person_period_table, 'r') as f:
+    # if we get a path, load the existing gender dict; if table, work on it stragithawawy
+    if type(person_period_table) is str:
+        with open(person_period_table, 'r') as f:
+            person_period_table = list(csv.reader(f))[1:]  # skip the header
 
-        reader = csv.reader(f)
-        next(reader, None)  # skip head
-
-        for row in reader:
-            given_names = row[1].split(' ')
-            for name in given_names:
-                if name not in gender_dict:  # prompt to assign name
-                    print(row)
-                    print(name)
-                    answer = input("What gender is this name? f,m,dk, surname ")
-                    if not ((answer == 'f') or (answer == 'm') or (answer == 'dk') or (answer == 'surname')):
-                        answer = input("Incorrect format, please, what gender is this name? f,m,dk ")
-                    gender_dict[name] = answer
+    for row in person_period_table:
+        given_names = row[1].split(' ')
+        for name in given_names:
+            if name not in gender_dict:  # prompt to assign name
+                print(row)
+                print(name)
+                answer = input("What gender is this name? f,m,dk, surname ")
+                if not ((answer == 'f') or (answer == 'm') or (answer == 'dk') or (answer == 'surname')):
+                    answer = input("Incorrect format, please, what gender is this name? f,m,dk ")
+                gender_dict[name] = answer
 
     # write new dict to file
     with open('preprocess/gender/ro_gender_dict_updated.txt', 'w') as out_gd:
