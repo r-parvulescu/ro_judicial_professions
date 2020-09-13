@@ -4,7 +4,7 @@ Functions for creating descriptive tables and graphs.
 
 import csv
 from describe import totals_in_out, inheritance
-from describe.mobility import geographic, hierarchical
+from describe.mobility import geographic, hierarchical, sequences
 from helpers import helpers
 
 
@@ -50,19 +50,26 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
         entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=False, unit_type='nivel')
         entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=True, unit_type='nivel')
 
-        # make table for mobility between appellate court regions
-        geographic.inter_unit_mobility_table(table, out_dir_mob, profession, 'ca cod')
+        for u_t in unit_type:
+            # make tables for entry and exit cohorts, per year per unit type (no gender)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
+            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
+
+        # make tables summarising yearly inter-appellate transfer networks
+        geographic.interunit_transfer_network(table, profession, "ca cod", out_dir_mob)
+
+        # make tables of raw of inter-appellate transfers
+        geographic.inter_unit_mobility_table(table, out_dir_mob, profession, "ca cod")
 
         # make table for hierarchical mobility and for career climbers
         hierarchical.hierarchical_mobility_table(table, out_dir_mob, profession)
         hierarchical.career_climbers_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
                                            first_x_years=10)
 
-        for u_t in unit_type:
-            # make tables for entry and exit cohorts, per year per unit type
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
+        # make table of sequences combining hierarchical position and geographic movement across appellate region
+        sequences.get_geographic_hierarchical_sequences(table, profession, out_dir_mob)
 
+    """
     # make tables for professional inheritance, for notaries and executori only
     # different professions have different sizes and structures, so different name rank and year window parameters
     if profession in {"notaries", "executori"}:
@@ -75,6 +82,7 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
                                            num_top_names=num_top_names, multi_name_robustness=False)
             inheritance.prof_inherit_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                            num_top_names=num_top_names, multi_name_robustness=True)
+    """
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
@@ -122,6 +130,18 @@ def year_counts_table(person_year_table, start_year, end_year, profession, out_d
                 writer.writerow({"year": year, "female": metrics['f'], "male": metrics["m"],
                                  "don't know": metrics['dk'], "total count": metrics['total_size'],
                                  "percent female": metrics['percent_female']})
+
+        # finally, show which appeals and tribunal areas were sampled
+
+        ca_col_idx = helpers.get_header(profession, 'preprocess').index('ca cod')
+        trib_col_idx = helpers.get_header(profession, 'preprocess').index('trib cod')
+
+        ca_areas = sorted(list({py[ca_col_idx] for py in person_year_table}))
+        tb_areas = sorted(list({py[trib_col_idx] for py in person_year_table}))
+
+        writer.writerow({"year": ''})
+        writer.writerow({"year": "SAMPLED COURT OF APPEALS AREAS", "female": ca_areas})
+        writer.writerow({"year": "SAMPLED TRIBUNAL AREAS", "female": tb_areas})
 
 
 def entry_exit_gender(person_year_table, start_year, end_year, profession, out_dir, entry=True, unit_type=None):
