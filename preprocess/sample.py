@@ -67,7 +67,7 @@ def person_years(person_month_table, month, change_dict):
             one_obs_per_year.extend(obs_by_month[closest_month])
             sampled_months.append(closest_month)
 
-    # remove the month column
+    # remove the month column, i.e. keep only data fields up to year
     one_obs_per_year = [row[:-1] for row in one_obs_per_year]
 
     print('AVERAGE AND STDEV OF MONTH SAMPLED: %s, %s' % (round(statistics.mean(sampled_months), 2),
@@ -217,3 +217,23 @@ def continuity_sample(person_year_table, time_period, profession):
     period_unit_continuity_table = [py for py in period_table if py[unit_name_idx] in continuity_unit_names]
 
     return period_unit_continuity_table
+
+
+def appellate_area_sample(person_year_table, profession, appellate_codes):
+    """
+    Samples person-years whose appellate codes match those given.
+
+    NB: for judges and prosecutors only!
+
+    :param person_year_table: a table of person-years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param appellate_codes: list, strings of appellate codes we wish to sample, e.g. ["CA3", "CA7"]
+    :return: a table of person-periods from only the specified appellate areas
+    """
+
+    ca_cod_idx = helpers.get_header(profession, 'preprocess').index('ca cod')
+    sampled_person_year_table = []
+    for pers_yr in person_year_table:
+        if pers_yr[ca_cod_idx] in set(appellate_codes):
+            sampled_person_year_table.append(pers_yr)
+    return sampled_person_year_table
