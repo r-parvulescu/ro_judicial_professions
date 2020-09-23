@@ -84,7 +84,7 @@ def update_size_gender(count_dict, row, start_year, end_year, profession, units,
     Counts the number of people per year; if unit is given, gives the count of person per year, per unit
 
     :param count_dict: a dictionary of counts -- for format, see function metrics_dict
-    :param row: a person-year as a list
+    :param row: a person-year as a list; first or last row, depending on whether we want entry or exit cohorts
     :param start_year: int, year we start looking at
     :param end_year: int, year we stop looking
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
