@@ -186,7 +186,7 @@ def yearly_weights(person_year_table, profession, appellate_areas_to_sample, wei
 
     NB: assumes weighting years feature entire population.
 
-    :param person_year_table: a table of person-years, as a list of lists; comes with header
+    :param person_year_table: a table of person-years, as a list of lists; comes with NO header
     :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :param appellate_areas_to_sample: list of appellate area codes indicating which areas we sample, e.g. ["CA1, "CA5"]
     :param weighting_year: year based on which we draw weights. NB: since we measure mobility by comparing this year
@@ -422,6 +422,77 @@ def estimated_population_growth(estimated_pop, sampling_year_range):
     return estimated_growth
 
 
+def avg_career_length(person_year_table, profession, area_sample=True):
+    """
+    Print out yearly, average, per-level career length, so we can answer questions like "did tribunal (i.e. level 2
+    judges) become more experienced, on average, between 1995 and 2005?
+
+    :param person_year_table: a table of person-years, as a list of lists; assumes no header
+    :param profession:
+    :param area_sample: bool, True if you want to exclusively use data from Alba, Iași, Craiova, and Ploiești
+                        appeals areas/regions
+    :return: None
+    """
+
+    # TODO if using the sample (and not whole population), need to top up estimates to account for the fact that
+    #  some people enter from outside the sample, so it might look like it's their first year, but really they've had
+    #  a longer career already
+
+    if area_sample:
+        appellate_areas_to_sample = ["CA1", "CA7", "CA9", "CA12"]
+        person_year_table = sample.appellate_area_sample(person_year_table, profession, appellate_areas_to_sample)
+
+    # add a career length count for each person, for each year
+
+    # group table by persons
+    yr_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    person_year_table = sorted(person_year_table, key=operator.itemgetter(pid_col_idx, yr_col_idx))
+    people = [person for k, [*person] in groupby(person_year_table, key=operator.itemgetter(pid_col_idx))]
+
+    # make an augmented table where the last year is the career length of that person, in that year
+    # NB: by convention we 1-index, i.e. your career length is "1" in the first year for which we observe you
+    # the career length column is the last one in the table
+    augmented_table = []
+    for person in people:
+        for idx, pers_yr in enumerate(person):
+            augmented_table.append(pers_yr + [idx])
+
+    # for each year, get average career length per level
+    years = sorted(list({int(py[yr_col_idx]) for py in augmented_table}))
+    year_dict = {year: {"1": [], "2": [], "3": [], "4": []} for year in years}
+
+    # sort and group augmented table by year
+    lvl_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+    augmented_table.sort(key=operator.itemgetter(yr_col_idx))
+    years = [yr for k, [*yr] in groupby(augmented_table, key=operator.itemgetter(yr_col_idx))]
+    for yr_group in years:
+        # recall that a year-group is made of person-years, all sharing the same year, e.g. 1996
+        current_year = int(yr_group[0][yr_col_idx])
+        # build the per-level person-year lists for each year, in the year_dict
+        for pers_yr in yr_group:
+            py_lvl = pers_yr[lvl_col_idx]
+            year_dict[current_year][py_lvl].append(int(pers_yr[-1]))
+
+    # get the level average for each year
+    for yr in year_dict:
+        for lvl in year_dict[yr]:
+            if year_dict[yr][lvl]:  # need to be careful, no lvl 3 before 1993
+                year_dict[yr][lvl] = round(statistics.mean(year_dict[yr][lvl]), 2)
+
+    # print the results
+    for yr in year_dict:
+        print(yr, ' | ', year_dict[yr])
+
+
+def percent_post_1990():
+    """"""
+    # TODO write this function, which is going to estimate how many people in each year, in each level, entered the
+    #  system after 1990. This is another way of answering the question "how much is the judiciary still staffed
+    #  by communist-era judges?
+    pass
+
+
 if __name__ == "__main__":
     root = "/home/radu/insync/docs/CornellYears/6.SixthYear/currently_working/judicial_professions/"
     branch = "data/judicial_professions/preprocessed/population/"
@@ -432,4 +503,6 @@ if __name__ == "__main__":
     with open(judges_population_filepath, 'r') as in_f:
         pers_yr_table = list(csv.reader(in_f))[1:]  # skip header
 
-    retirement_promotion_estimates(pers_yr_table, "judges", (1985, 1996), tables_out_dir)
+    # retirement_promotion_estimates(pers_yr_table, "judges", (1985, 1996), tables_out_dir)
+
+    avg_career_length(pers_yr_table, "judges", area_sample=False)
