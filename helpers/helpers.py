@@ -158,3 +158,17 @@ def cohort_name_lists(person_year_table, start_year, end_year, profession, entry
                 edge_person_year[surname_col_idx] + ' | ' + edge_person_year[given_name_col_idx])
 
     return cohorts
+
+
+def sum_dictionary_values(list_of_dicts):
+    """
+    If each dict in a list has the exact same keys and the values are integers, floats, etc. this function returns a
+    dict with the same keys, where values are sums of values from the separate dicts.
+    :param list_of_dicts: a list of dictionaries with identical keys and summable values
+    :return: dict, same keys as input dicts, values are sums of input dict values
+    """
+    sum_dict = {key: 0 for key in list_of_dicts[0].keys()}
+    for d in list_of_dicts:
+        for key in d.keys():
+            sum_dict[key] += float(d[key])
+    return sum_dict
