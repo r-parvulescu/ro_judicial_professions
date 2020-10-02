@@ -127,7 +127,8 @@ given_name_mistakes_transdict = {
     "GHEROGHE": "GHEORGHE", "IOSN": "IOAN", "CIRPIAN": "CIPRIAN", "LONEL": "IONEL",
     "BAGDAN": "BOGDAN", "GABRIELVALENTIN": "GABRIEL VALENTIN", "FLORINEI": "FLORINEL", "GRIELA": "GABRIELA",
     "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN",
-    "ISABERLA": "ISABELA", "ULPIN": "ULPIU", "ALEANDRINA": "ALEXANDRINA", "CARMNEN": "CARMEN", "MIAHELA": "MIHAELA"
+    "ISABERLA": "ISABELA", "ULPIN": "ULPIU", "ALEANDRINA": "ALEXANDRINA", "CARMNEN": "CARMEN", "MIAHELA": "MIHAELA",
+    "GEOREGETA": "GEORGETA"
 }
 
 given_name_diacritics_transdict = {
@@ -158,7 +159,8 @@ given_name_diacritics_transdict = {
     "RAZVAN": "RĂZVAN", "STANCESCU": "STĂNCESCU", "ENIKO": "ENIKŐ", "MANDICA": "MANDICĂ",
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
-    "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA", "MADALIN": "MĂDĂLIN"
+    "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA", "MADALIN": "MĂDĂLIN",
+    "ISTVAN": "ISTVÁN", "GHINTUIALA": "GHINŢUIALA", "GHIMISLIU": "GHIMIŞLIU",
 }
 
 # HELPERS FOR JUDGES #
@@ -211,6 +213,7 @@ def judges_two_col_name_getter(list_of_lines, names):
             name_line = val.split('|')
             name_line = [l for l in name_line if bool(re.match('^(?=.*[a-zA-Z])', l))]
             if len(name_line) < 2:  # name spilled over onto next line, put it to last name and skip
+                # sometimes catches title line incorrectly
                 if name_line[0] == 'CRT' or len(name_line[0]) < 2:
                     continue
                 names[idx - 1][1] = names[idx - 1][1] + ' ' + name_line[0]
@@ -403,7 +406,10 @@ judges_surname_transdict = {
     "ŢUIU": "TUIU", "ŢÂCŞA": "TÂCŞA", "TIPLEA": "ŢIPLEA", "ŢĂPURIN": "ŢAPURIN",
     "TERMURE": "ŢERMURE", "CRETEANU": "CREŢEANU", "GIURCA": "GIURCĂ", "ILEASĂ": "ILIASĂ",
     "IVĂNIŞI": "IVĂNIŞ", "LAZĂU": "LĂZĂU", "MIRĂUŢĂ": "MIRUŢĂ", "PATRA": "PATRĂ",
-    "RACLEA": "RÂCLEA"
+    "RACLEA": "RÂCLEA", "GOSER": "GOSLER", "SFÂRLEAAZĂ": "SFÂRLEAZĂ", "TERODORESESCU": "TEDORESCU",
+    "PREPELITA": "PREPELIŢĂ", "CAPITANESCU": "CĂPITANESCU", "BALAUNŢESCU": "BĂLĂUNŢESCU",
+    "ŞERCAIANU": "ŞERCĂIANU", "VISOIU": "VIŞOIU", "UTII": "UŢII", "TĂMAS": "TĂMAŞ", "TOMSA": "TOMŞA",
+    "TALOS": "TALOŞ", "SĂRĂCUT": "SĂRĂCUŢ", "PARVU": "PÂRVU"
 }
 
 
@@ -465,7 +471,7 @@ court_names_transdict = {
     "ICCJ": "ÎNALTA CURTE DE CASAŢIE ŞI JUSTIŢIE", "TRIBUNAL II": "TRIBUNALUL BIHOR",
     "CURTEA DE APEL MUREŞ": "CURTEA DE APEL TÂRGU MUREŞ", "TRIB ": "TRIBUNALUL ", "HATEG": "HAŢEG",
     "JUD ": "JUDECĂTORIA ", "PETROSANI": "PETROŞANI", "JUDECATORIA": "JUDECĂTORIA",
-    "ROŞIORII": "ROŞIORI"
+    "ROŞIORII": "ROŞIORI", "JUDECĂTORIA MUREŞ": "JUDECĂTORIA TÂRGU MUREŞ"
 }
 
 court_sectors_buc_transdict = {

@@ -387,8 +387,10 @@ def lengthen_name(person_period_table, profession, change_dict, time, range_year
             # SECOND IF CONDITION FOR REPLACEMENT
             # don't put in known exceptions to name lengthening, per profession
 
-            extension_exceptions = {'executori': executori_name_extension_exceptions, 'notaries': [],
-                                    'judges': [], 'prosecutors': []}
+            extension_exceptions = {'executori': executori_name_extension_exceptions,
+                                    'prosecutors': prosecutors_name_extension_exceptions,
+                                    'judges': judges_name_extension_exceptions,
+                                    'notaries': []}
 
             if len(longest_n.split()) != len(row[name_idx].split()):  # first condition
 
@@ -474,6 +476,16 @@ def get_sequence_bounds(pers_per_tab, ref_row, range_years, surname=False, year=
 
 executori_name_extension_exceptions = {"CSABA JR", "M MARIN", "MIHAI SEBASTIAN", "IOAN VASILE", "CIPRIAN CONSTANTIN",
                                        "CRISTIAN SEBASTIAN"}
+
+prosecutors_name_extension_exceptions = {"ALEXANDRU DANIEL", "IOANA NICOLETA", "SIMONA ŞTEFANIA", "AURELIA MIRELA",
+                                         "CRISTINA RAMONA", "CONSTANTIN MARIUS", "GABRIELA LAURA", "IOAN IOSIF",
+                                         "CRISTINA LUCREŢIA", "COSMIN ŞTEFĂNIŢĂ"}
+
+judges_name_extension_exceptions = {"FLORINA PATRICIA SORANA", "MARIANA ZENOVIA", "ELENA GEORGIANA",
+                                    "ARDELEANU MUNTEANU", "CONSTANTIN DUMITRU", "CRISTINA DĂNUŢ", "DANIEL IOAN",
+                                    "ALINA IULIANA", "ELENA ROBERTINA", "MARIA OANA", "ADRIAN OCTAVIAN",
+                                    "DUMITRU LUCIAN", "LAURA SIMONA", "DOINA ELENA", "CRISTINA LUMINIŢA",
+                                    "ALINA ANDREEA", "ELENA IVONA"}
 
 
 def standardise_long_full_names(person_period_table, change_dict, time):
@@ -708,7 +720,48 @@ judges_fn_transdict = {"AILENE | ANCUŢA": "AILENEI | ANCUŢA", "ANGELESCU | CRI
                        "VINTILĂ | NARCISA": "VINŢILĂ | NARCISA", "ŞERBAN | MARIA": "ŞERBAN | MARIAN",
                        "TENESCU | MĂRIOARA": "ŢENESCU | MĂRIOARA", "ŢERMURE | IOANA": "ŢĂRMURE | IOANA",
                        "ŢIRLEA | IRINA": "ŢÂRLEA | IRINA", "ARDELEANU | ANTONETA": "ARDELEANU | ANTOANETA",
-                       "ARMĂ | MIRELA": "ARAMĂ | MIRELA", "ARSENI | ALEXANDR": "ARSENI | ALEXANDRA"}
+                       "ARMĂ | MIRELA": "ARAMĂ | MIRELA", "ARSENI | ALEXANDR": "ARSENI | ALEXANDRA",
+                       "ARCHIR DIONIDIE": "ARGHIR DIONISIE", "ASCHER PETRU": "ASCHER PETRE",
+                       "BEZERGHEANU | JAN": "BEZERGHEANU | JEAN", "BIRIS | ILA": "BIRIŞ | ILA",
+                       "BORDEANU | ION": "BORDEANU | IOAN", "BORDOS | ANNA MARIA": "BORDOŞ | ANA MARIA",
+                       "COSNEANU | RODICA": "COSNEAN | RODICA", "CILNICEANU | NICOLAE": "CÂLNICEANU | NICOLAE",
+                       "EHRMANN | IOAN": "EHRMANN | IOHANN", "GALBURA | DIONISIE": "GALBURĂ | DIONISIE",
+                       "HUELIUC | NICOLAE": "HMELIUC | NICOLAE", "IANIT | CONSTANTIN": "IANIŢ | CONSTANTIN",
+                       "IVANESCU | JAN": "IVĂNESCU | JAN", "JÂRLĂEANU | ROMEO": "JÂRLĂIANU | ROMEO",
+                       "KOVACS | GEZA": "KOVÁCS | GÉZA", "LOGOJAN | TRAIAN": "LUGOJAN | TRAIAN",
+                       "MIHNEA | ION": "MICHNEA | IOAN", "MICU | PETRE": "MICU | PĂTRU",
+                       "MUNTEANU | DOINIŢA": "MUNTEAN | DOINIŢA", "MACEŞANU | TEODOR": "MĂCEŞANU | TEODOR",
+                       "NEAGOIE | EDMOND": "NEAGOE | EDMOND", "NICULAE | GHERGHINA": "NICULAE | GHEORGHINA",
+                       "PALAGHINIUC | FLORICA": "PALAGHICIUC | FLORICA", "PITUL | OCTAVIAN": "PIŢUL | OCTAVIAN",
+                       "POPESCU | EUGEN": "POPESCU | EUGENIU", "ROŞCULEŢ | LEOCADIA": "ROŞCULEŢ | LEOCARDIA",
+                       "TEODOROVICI | NICOLAE": "TEODOROVICI | NICULAI", "TVARDOCHLIB | ANTON": "TVARDOCLIB | ANTON",
+                       "TEODOROVICI | NECULAI": "TEODOROVICI | NICULAI", "URZICEANU | GHEORGHE": "URZICEANU | GEORGE",
+                       "VAJA | GHEORGHE": "VÂJA | GHEORGHE", "VIDAEFF | ION": "VIDAEFF | IOAN",
+                       "VLAD | DORINA": "VLAD | DOINA", "VRÂNCIANU | MARIA": "VRÂNCEANU | MARIA",
+                       "ZARIE | ADRIANA": "ZĂRIE | ADRIANA", "SAITIŞ | FLAVIA": "SAITIŞ | FLAVIA",
+                       "ŞCIUCHIN | ION": "ŞCIUCHIN | IOAN", "BORICEANU | MARINELA": "BORICEAN | MARINELA",
+                       "STEFAROI | NICOLETA": "ŞTEFĂROI | NICOLETA", "TOADER | NECULAE": "TOADER | NICOLAE",
+                       "ŞTEFĂNESCU | BRÂNDUŞA MARIA": "ŞTEFĂNESCU | BRÂNDUŞA MARIANA",
+                       "PĂTRAŞCU URLOIU | PAULA VASILICA": "PĂTRAŞCU UDROIU | PAULA VASILICA",
+                       "CHIRIAC IENUŞ | LAVINIA OLIVIA": "CHIRIAC IENUŞ | LAVINIA OTILIA",
+                       "ANTONOVICI | CORNELIA MARIELA": "ANTONOVICI | CORNELIA MIRELA", "PERSU | ION": "PERŞU | ION",
+                       "MOVILESCU | GABRIELA OANA": "MOVILEANU | GABRIELA OANA", "TOGAN | LICA": "TOGAN | LICĂ",
+                       "MECLENEANU | DANIELA MARIANA": "MECLEANU | DANIELA MARIANA", "OTELEA | ION": "OŢELEA | ION",
+                       "IVANICA | MARIANA RALUCA": "IVĂNICĂ | MARIANA RALUCA", "PURJA | GABRIELLA": "PURJA | GABRIELA",
+                       "GHITA | ADINA ELVIRA": "GHIŢĂ | ADINA ELVIRA", "TOMESCU | LUCICA": "TOMESCU | LUCIA",
+                       "BĂRCĂNESCU | ANTONIU DRAGOŞ IOAN": "BĂRCĂNESCU | ANTON DRAGOŞ IOAN",
+                       "BĂRBUTI | ADELA ILIANA": "BĂRBUŢI | ADELA ILIANA", "PLOSCA | MARIA": "PLOSCĂ | MARIA",
+                       "BARTA | AGOTA CHINGA": "BARTA | AGOTA KINGA", "ZABOLOTNAI | JANICA": "ZABOLOTNAI | JENICA",
+                       "PAHONTU | GABRIELA": "PAHONŢU | GABRIELA", "NISTOR | ERICA": "NISTOR | ERIKA",
+                       "NASTASĂ | AURICA": "NĂSTASĂ | AURICA", "NANU | GHEORGHITA": "NANU | GHEORGHIŢA",
+                       "MARDARE | ANGELA": "MĂRDARE | ANGELA", "MIHĂIEŞ | AUREL": "MIHĂEŞ | AUREL",
+                       "LITU | MARIA": "LIŢU | MARIA", "LINŢA | ALEXANDRA": "LINŢĂ | ALEXANDRA",
+                       "HANES | ONISIE": "HANEŞ | ONISIE", "GHETA | ELEONORA": "GHEŢA | ELEONORA",
+                       "COSINSCHI | VIORICA": "COSÂNSCHI | VIORICA", "COSMAN | GHEORGHINA": "COŞMAN | GHEORGHINA",
+                       "COLIPCA | FLORIN": "COLIPCĂ | FLORIN", "CIUCA | GILICA": "CIUCĂ | GILICA",
+                       "CHITU | VICTOR": "CHIŢU | VICTOR", "CERNATOIU | ADINA": "CERNĂTOIU | ADINA",
+                       "BANESCU | ELENA": "BĂNESCU | ELENA", "BAJENARU | GABRIELA": "BĂJENARU | GABRIELA",
+                       "ALEXANDRU | MIŢICĂ": "ALEXANDRU | MITICĂ"}
 
 prosecutors_fn_transdict = {"ARUNCUTEAN | IONELIA": "ARUNCUTEAN | IONELA", "BALOG | MARIA": "BALOGH | MARIA",
                             "BORDEIAN | CORNELIU": "BORDEIANU | CORNELIU", "BRATU | IOLANDA": "BRATU | VIOLANDA",
