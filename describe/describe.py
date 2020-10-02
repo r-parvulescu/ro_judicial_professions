@@ -6,6 +6,7 @@ import csv
 from describe import totals_in_out, inheritance
 from describe.mobility import geographic, hierarchical, sequences
 from helpers import helpers
+from preprocess import sample
 
 
 def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
@@ -28,7 +29,7 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
     :return: None
     """
 
-    table = helpers.get_sample(pop_in_file_path, sampling_scheme, profession)
+    table = sample.get_sample_type(pop_in_file_path, sampling_scheme, profession)
 
     # make table of total counts per year
     year_counts_table(table, start_year, end_year, profession, out_dir_tot)

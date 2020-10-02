@@ -2,6 +2,7 @@
 Functions for sampling from a person-month table to generate a person-year table.
 """
 
+import csv
 import operator
 import itertools
 import statistics
@@ -165,6 +166,27 @@ def mo_yr_sample(person_month_table, profession, months, years):
     return sampled_pm_table
 
 
+def get_sample_type(population_in_file_path, sampling_scheme, profession):
+    """
+    Given the path to the population level table, return a table sampled according to the sampling scheme.
+
+    :param population_in_file_path: path to the base, population-level data file
+    :param sampling_scheme: str, what sort of sampling we're doing
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :return: a person-period table as a list of lists, sampled according to the sampling scheme
+    """
+
+    with open(population_in_file_path, 'r') as infile:
+        table = list(csv.reader(infile))[1:]  # start from first index to skip header
+
+    if sampling_scheme == 'population':
+        return table
+    if sampling_scheme == 'continuity_sample_1978':
+        return continuity_sample(table, (1978, 2020), profession)
+    if sampling_scheme == 'continuity_sample_1988':
+        return continuity_sample(table, (1988, 2020), profession)
+
+
 def continuity_sample(person_year_table, time_period, profession):
     """
     There are several points in time in which my datasets become increasingly restricted, e.g. before 2005 I only have
@@ -230,7 +252,6 @@ def appellate_area_sample(person_year_table, profession, appellate_codes):
     :param appellate_codes: list, strings of appellate codes we wish to sample, e.g. ["CA3", "CA7"]
     :return: a table of person-periods from only the specified appellate areas
     """
-
     ca_cod_idx = helpers.get_header(profession, 'preprocess').index('ca cod')
     sampled_person_year_table = []
     for pers_yr in person_year_table:

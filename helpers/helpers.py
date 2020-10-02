@@ -50,27 +50,6 @@ def get_header(profession, stage):
     return head
 
 
-def get_sample(population_in_file_path, sampling_scheme, profession):
-    """
-    Give the path to the population level table, return a table sampled according to the sampling scheme.
-
-    :param population_in_file_path: path to the base, population-level data file
-    :param sampling_scheme: str, what sort of sampling we're doing
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: a person-period table as a list of lists, sampled according to the sampling scheme
-    """
-
-    with open(population_in_file_path, 'r') as infile:
-        table = list(csv.reader(infile))[1:]  # start from first index to skip header
-
-    if sampling_scheme == 'population':
-        return table
-    if sampling_scheme == 'continuity_sample_1978':
-        return sample.continuity_sample(table, (1978, 2020), profession)
-    if sampling_scheme == 'continuity_sample_1988':
-        return sample.continuity_sample(table, (1988, 2020), profession)
-
-
 def row_to_dict(row, profession, stage):
     """
     Makes a dict by mapping list values to a list of keys, which vary by profession.
