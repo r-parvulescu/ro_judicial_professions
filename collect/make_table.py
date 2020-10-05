@@ -38,7 +38,7 @@ def combine_profession_tables(preprocessed_dir, out_path):
     """
 
     # load the court codes dict, we'll need this later
-    court_codes = workplace.get_unit_codes('judges')
+    court_codes = workplace.get_workplace_codes('judges')
 
     legal_professions = {'notaries', 'executori', 'judges', 'prosecutors'}
 
@@ -100,15 +100,22 @@ def combine_profession_tables(preprocessed_dir, out_path):
     # TODO figure out how to do row deduplication on this thing
 
 
-def make_pp_table(in_dir, out_path, profession):
+def make_pp_table(in_dir, out_path, profession, skip_years_xlsx=None):
     """
     Go through employment rolls, extract person-period data, put it into a table, and save as csv.
 
     :param in_dir: directory where the base data files live
     :param out_path: path where we want the person-period table(s) to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param skip_years_xlsx: if set of ints (representing years; e.g. {2004, 2005} are provided, then we skip all
+                            observations associated with those years in the xlsx tables, which contain historical data
+                            obtained from court archives; thus we can exclude data from especially messy years
     :return None
     """
+
+    # so we avoid looking into non-iterables
+    if skip_years_xlsx is None:
+        skip_years_xlsx = set()
 
     # initialise a dict of person-period tables, according to the time-grain of the table
     # (i.e. person-year vs person-month)
@@ -127,11 +134,11 @@ def make_pp_table(in_dir, out_path, profession):
             # if int(re.search(r'([1-2][0-9]{3})', db).group(1)) < 2005:  # to use only pre-2005 data
             for root, subdirs, files in os.walk(tmpdirname):
                 for file in files:
-                    if file_count < 3000:
-                        file_count += 1
-                        file_path = root + os.sep + file
-                        print(file_count, '|', file)
-                        people_periods_dict = triage(file_path, profession)
+                    file_count += 1
+                    file_path = root + os.sep + file
+                    print(file_count, '|', file)
+                    if file_count < 3500:
+                        people_periods_dict = triage(file_path, profession, skip_years_xlsx=skip_years_xlsx)
                         [ppts[k][0].extend(v) for k, v in people_periods_dict.items() if v]
 
     # write to csv
@@ -146,7 +153,7 @@ def make_pp_table(in_dir, out_path, profession):
                     writer.writerow(row)
 
 
-def triage(in_file_path, profession):
+def triage(in_file_path, profession, skip_years_xlsx=None):
     """
     Invoke text extraction and processing tools depending on file type.
 
@@ -169,12 +176,19 @@ def triage(in_file_path, profession):
 
     :param in_file_path: string, path to the file holding employment information
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param skip_years_xlsx: if set of ints (representing years; e.g. {2004, 2005} are provided, then we skip all
+                            observations associated with those years in the xlsx tables, which contain historical data
+                            obtained from court archives; thus we can exclude data from especially messy years
     :return dict with key =  time-grains (i.e. year, month) and value = person-period table
     """
     pps = {'year': [], 'month': []}
 
+    # so we avoid looking into non-iterables
+    if skip_years_xlsx is None:
+        skip_years_xlsx = set()
+
     if in_file_path[-4:] == 'xlsx':
-        people_periods_dict = get_xlsx_people_periods(in_file_path, profession)
+        people_periods_dict = get_xlsx_people_periods(in_file_path, profession, skip_years=skip_years_xlsx)
         [pps[k].extend(v) for k, v in people_periods_dict.items() if v]
 
     if in_file_path[-3:] == 'csv':
@@ -194,14 +208,21 @@ def triage(in_file_path, profession):
     return pps
 
 
-def get_xlsx_people_periods(in_file_path, profession):
+def get_xlsx_people_periods(in_file_path, profession, skip_years=None):
     """
     Extract all people people-periods (e.g. person-month) from employment rolls in .xlsx format,
     dumps them in tables (as lists of lists), and puts the tables in a dict
     :param in_file_path: string, path to the file holding employment information
     :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :param skip_years: if set of ints (representing years; e.g. {2004, 2005} are provided, then we skip all
+                      observations associated with those years; thus we can exclude data from especially messy years
     :return dict with key =  time-grains (i.e. year, month) and value = person-period table
     """
+
+    # so we avoid looking into non-iterables
+    if skip_years is None:
+        skip_years = set()
+
     df = pd.read_excel(in_file_path)
     table = xlsx_df_cleaners(df).values.tolist()  # not all dfs have same shape, turn to list of lists
 
@@ -213,6 +234,10 @@ def get_xlsx_people_periods(in_file_path, profession):
         # TODO need to get back to this and figure out how to not throw out these data
         if 'ANGAJAŢI' not in row[2]:
             unit = None  # easy to trace problem
+
+            # skip the year observation, if applicable
+            if int(row[3]) in skip_years:  # year = row[3]
+                continue
 
             surnames, given_names = '', ''
             if profession == 'judges':
