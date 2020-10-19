@@ -54,8 +54,11 @@ def pop_cohort_counts(person_year_table, start_year, end_year, profession, cohor
 
     # then get cohort counts
 
-    # group person-years by person
-    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(1))]  # row[1] == PID
+    # sort table by people and year, then group person-years by person
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    yr_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    person_year_table.sort(key=itemgetter(pid_col_idx, yr_col_idx))
+    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
     for person in people:
         # if describing entry cohorts we want the first person-year, else the last person-year (i.e. exit cohorts)
         edge_person_year = person[0] if entry else person[-1]
