@@ -761,7 +761,13 @@ judges_fn_transdict = {"AILENE | ANCUŢA": "AILENEI | ANCUŢA", "ANGELESCU | CRI
                        "COLIPCA | FLORIN": "COLIPCĂ | FLORIN", "CIUCA | GILICA": "CIUCĂ | GILICA",
                        "CHITU | VICTOR": "CHIŢU | VICTOR", "CERNATOIU | ADINA": "CERNĂTOIU | ADINA",
                        "BANESCU | ELENA": "BĂNESCU | ELENA", "BAJENARU | GABRIELA": "BĂJENARU | GABRIELA",
-                       "ALEXANDRU | MIŢICĂ": "ALEXANDRU | MITICĂ"}
+                       "ALEXANDRU | MIŢICĂ": "ALEXANDRU | MITICĂ", "IVĂNESCU | FLOREA": "DINCĂ IVĂNESCU | FLOREA",
+                       "MUNTEANU | NICOLETA": "MUNTEANU | MARIA NICOLETA",
+                       "ONCIULESCU | NICOLA": "ONCIULESCU | NICOLAE",
+                       "ONCIULESCU | NICOLAE": "ONCIULESCU | MARCEL NICOLAE", "RUSU | MARCEL": "RUSU | IOAN MARCEL",
+                       "ONEŢ UDREA | VICTORIA": "ONEŢ UDREA | VALENTINA VICTORIA",
+                       "ONEŢ | VALENTINA VICTORIA": "ONEŢ UDREA | VALENTINA VICTORIA",
+                       "NĂSTASE RICHIŢEANU | OVIDIU": "RICHIŢEANU | NĂSTASE OVIDIU"}
 
 prosecutors_fn_transdict = {"ARUNCUTEAN | IONELIA": "ARUNCUTEAN | IONELA", "BALOG | MARIA": "BALOGH | MARIA",
                             "BORDEIAN | CORNELIU": "BORDEIANU | CORNELIU", "BRATU | IOLANDA": "BRATU | VIOLANDA",

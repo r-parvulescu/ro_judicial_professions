@@ -5,8 +5,8 @@ Handy helper functions.
 import csv
 import itertools
 from operator import itemgetter
-from preprocess import sample
 from preprocess import standardise
+from preprocess import preprocess
 
 
 def get_header(profession, stage):
@@ -152,46 +152,3 @@ def sum_dictionary_values(list_of_dicts):
         for key in d.keys():
             sum_dict[key] += float(d[key])
     return sum_dict
-
-
-def debug_names(person_period_table_path, profession, year_range, lev_dist, name_type):
-    """
-    Sometimes names vary between years by two diacritics or some slight misspelling due to input inconsistency.
-    This function finds names in certain years (e.g. 1985, 1986) which are different up to a certain Levenshtein
-    distance, and prints them out. It's then our job to see how we handle them.
-
-    NB: takes as input a pre-processed table, with header
-
-    :param person_period_table_path: str, path to where the person-period table lives on disk
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :param year_range: 2-tuple of ints representing lower and upper years, e.g. (2004, 2018)
-    :param lev_dist: int, levenshtein/edit distance between two strings, e.g. "DERP" and "DER" have lev_dist = 1
-    :param name_type: str, "surname", "given name" or "full name"
-    :return: None
-    """
-
-    # load the table
-    with open(person_period_table_path, 'r') as in_f:
-        person_period_table = list(csv.reader(in_f))[1:]  # skip header
-
-    # get handy column indexes
-    yr_col_idx = get_header(profession, "preprocess").index("an")
-    surname_col_idx = get_header(profession, "preprocess").index("nume")
-    given_name_col_idx = get_header(profession, "preprocess").index("prenume")
-
-    # make a set of all names
-    if name_type == "surname":
-        name_set = {pp[surname_col_idx] for pp in person_period_table
-                    if year_range[0] <= int(pp[yr_col_idx]) <= year_range[1]}
-    elif name_type == "given name":
-        name_set = {pp[given_name_col_idx] for pp in person_period_table
-                    if year_range[0] <= int(pp[yr_col_idx]) <= year_range[1]}
-    else:  # name_type == "full name":
-        name_set = {pp[surname_col_idx] + ' | ' + pp[given_name_col_idx] for pp in person_period_table
-                    if year_range[0] <= int(pp[yr_col_idx]) <= year_range[1]}
-
-    # compute Levenshtein/edit distance between the names
-    name_pairs_lev_dist_apart = standardise.pairwise_ldist(name_set, lev_dist)
-
-    # print out the results for us to eyeball
-    [print(pair) for pair in name_pairs_lev_dist_apart]

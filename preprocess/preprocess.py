@@ -17,7 +17,7 @@ from preprocess.inheritance import inheritance
 from helpers import helpers
 
 
-def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, fem_sns_log_path, profession):
+def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, name_correct_log_path, profession):
     """
     Standardise data from person-period tables at different levels of time granularity (year and month levels),
     sample person-months to get person-years, combine this sample with the original year-level data, clean the
@@ -28,6 +28,7 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, f
     :param prep_table_out_path: path where we want the preprocessed person-period table(s) to live
     :param std_log_path: path where we want the logs from the standardisation to live
     :param pids_log_path: path where we want the logs from the unique-person-ID-giver to live
+    :param name_correct_log_path: path where we want the logs from spurious name change correctors to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :return: None
     """
@@ -88,10 +89,15 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, f
     if profession == 'notaries' or profession == 'executori':
         ppts['year'][0] = add_inheritance_status(ppts['year'][0], profession, year_window=1000)
 
-    # run a post-hoc name standardiser which mis-matched surnames of women; this occurs most likely because in this
-    # time and place women are likely to change their surnames upon marriage
+    # run a post-hoc name corrector which finds names that spuriously change from between two years, and then makes
+    # sure that the same unique person ID applies to both people/names across the two years
     if profession in {"judges", "prosecutors"}:
-        ppts['year'][0] = female_surname_change_corrector(ppts['year'][0], profession, fem_sns_log_path)
+        print("RUNNING: SPURIOUS GIVEN NAME AND SURNAME CHANGES CORRECTOR")
+        ppts['year'][0] = spurious_name_change_corrector(ppts['year'][0], profession, name_correct_log_path,
+                                                         fullnames=False)
+        print("RUNNING: SPURIOUS FULLNAME CHANGE CORRECTOR")
+        ppts['year'][0] = spurious_name_change_corrector(ppts['year'][0], profession, name_correct_log_path + '2',
+                                                         fullnames=True)
 
     # write the preprocessed table to disk
     write_preprocessed_to_disk(ppts['year'][0], prep_table_out_path, profession)
@@ -225,48 +231,38 @@ def reshape_to_person_years(person_table, profession):
     return py_with_row_ids
 
 
-def female_surname_change_corrector(person_year_table, profession, female_surname_change_log_path):
+def spurious_name_change_corrector(person_year_table, profession, name_change_corrections_log_path, fullnames=False):
     """
     Because women in this dataset and culture are the ones that change surnames upon marriage, it sometimes that happens
     that they are written under one surname one year, and under another the next, either because they got married in
     that year, or for whatever reason the bureaucrats changed which name they used. The pattern that you see is like
     this:
 
-    SURNAME    GIVEN NAME    WORKPLACE  YEAR
+    (A) ID  SURNAME    GIVEN NAME    WORKPLACE  YEAR        (B)    ID SURNAME    GIVEN NAME    WORKPLACE  YEAR
 
-    DERP       MARIA         MARS       2012
-    DERP       MARIA         MARS       2012
-    HERP       MARIA         MARS       2012
-    HERP       MARIA         MARS       2012
+        43  DERP       MARIA         MARS       2012               43  HERP       MARIA         MARS       2012
+        43  DERP       MARIA         MARS       2013               44  DERP       MARIA         MARS       2013
+        44  HERP       MARIA         MARS       2014               44  DERP       MARIA         MARS       2015
+        44  HERP       MARIA         MARS       2015               45  DERP       MARINA        MARS       2014
 
-    The workplace is the same, the year sequence is continuous, the given name is identical, but the surname changes.
 
-    This code makes a new surname by combining the two old ones, so for each year you then get "DERP HERP MARIA."
+    The workplace is the same, the year sequence is continuous, but there are changes in surnames, given names, or both
+    (i.e. the full names).
+
+    This code assigns the same ID to names that should refer to the same person. In example (A), all codes become 43,
+    and in example (B), all codes become 43
 
     :param person_year_table: a table of person periods, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :param female_surname_change_log_path: str, path to where the log of name changes will live
+    :param name_change_corrections_log_path: str, path to where the log of name changes will live
+    :param fullnames: bool, True if correcting for spurious full name changes, False if separately correcting for both
+                      given name and surname spurious changes
     :return: a cleaned person-year table with harmonised surnames
     """
 
-    # in each profession there are certain name in the inferior year that we know (from poking at the tables) which map
-    # onto more than name in the superior year, which is a noise-introducing error; mark these names so we avoid them
-    judges_names_skip = {"ALDEA | MARIA", "ATUDOSEI | MARIA", "BARBU | LARISA LUMINIŢA",
-                         "BRĂESCU | MIHAELA", "CERNAT | DOINIŢA",
-                         "FRUNZĂ | NECTARA NICOLETA", "GIANGU | MARIA", "HRIB | CRISTINA",
-                         "IVĂNUŞCĂ | MARIA", "LEFTER | VIORICA", "MIHALCEA | DOINIŢA",
-                         "MUDAVA | SIMONA", "MUNTEAN | DANIELA", "VODA | CODRUŢA",
-                         "MĂNĂSTIREANU | CRISTINA", "NECULAU | CRISTINA",
-                         "PREDAN | GEORGETA", "SCRIMINŢI | ELENA", "TEODORESCU | OANA",
-                         "STOICA | DOINIŢA", "TRANDAFIR | DOINIŢA", "URSACHE | MARIA"}
-
     # get handy column indexes
-    workplace_cod_idx = helpers.get_header(profession, "preprocess").index("instituţie")
     yr_col_idx = helpers.get_header(profession, "preprocess").index("an")
-    surname_col_idx = helpers.get_header(profession, "preprocess").index("nume")
-    given_name_col_idx = helpers.get_header(profession, "preprocess").index("prenume")
     pid_col_idx = helpers.get_header(profession, "preprocess").index('cod persoană')
-    gend_col_idx = helpers.get_header(profession, "preprocess").index('sex')
 
     # count how many unique persons we start with
     unique_ids_at_start = len({py[pid_col_idx] for py in person_year_table})
@@ -278,14 +274,14 @@ def female_surname_change_corrector(person_year_table, profession, female_surnam
     # initialise new table, dictionary of id changes, and the log showing which names we placed under the same id
     standardised_names_table = []
     id_changes = {}
-    associated_names_log = [[profession], ["ASSOCIATED NAMES"]]
+    associated_names_log = [[profession], ["ASSOCIATED NAMES", '', '', "CORRECTOR FUNCTION"]]
 
     # get the range of years on which we run the function
     year_range = sorted(list({py[yr_col_idx] for py in person_year_table}))
 
     # initialise a dict that shows us how many names were standardised in each year -- eyeballing this distribution
     # can indicate the problem years to which we should pay more attention
-    change_yr_distr = {year: 0 for year in year_range}
+    change_distr_year = {year: 0 for year in year_range}
 
     # within the year range
     for i in range(int(year_range[0]), int(year_range[-1])):
@@ -295,22 +291,143 @@ def female_surname_change_corrector(person_year_table, profession, female_surnam
 
         # make two dicts: one of people whose career ends in the inferior year, and one of people whose careers start
         # in the superior year. The key of each dict is the unique ID, and the value is the person-year / row
-        infr_yr_careers_end, supr_yr_careers_start = [], []
+        inferior_year_careers_end, superior_year_careers_start = [], []
         for person in people:
             if int(person[-1][yr_col_idx]) == year_pair[0]:
-                infr_yr_careers_end.append(person[-1])
+                inferior_year_careers_end.append(person[-1])
             if int(person[0][yr_col_idx]) == year_pair[1]:
-                supr_yr_careers_start.append(person[0])
+                superior_year_careers_start.append(person[0])
 
-        # do a pairwise comparison of person-years ending in inferior year and person-years beginning in superior year
-        for inf_py in infr_yr_careers_end:
-            inf_sn, inf_gn = inf_py[surname_col_idx], inf_py[given_name_col_idx]
-            inf_fn, inf_gndr = inf_sn.split() + inf_gn.split(), inf_py[gend_col_idx]
+        spurious_name_change_identifiers(inferior_year_careers_end, superior_year_careers_start, id_changes,
+                                         associated_names_log, change_distr_year, profession,
+                                         fullnames=fullnames)
 
-            for sup_py in supr_yr_careers_start:
-                sup_sn, sup_gn = sup_py[surname_col_idx], sup_py[given_name_col_idx]
-                sup_fn, sup_gndr = sup_sn.split() + sup_gn.split(), sup_py[gend_col_idx]
+    # change the ID's to group together the erroneously-split persons
+    for row in person_year_table:
+        pers_id = row[pid_col_idx]
+        if pers_id in id_changes:
+            standardised_names_table.append([row[0]] + [id_changes[pers_id]] + row[2:])
+        else:
+            standardised_names_table.append(row)
 
+    # see how many unique ID's we have after we've combined/standardised the names
+    unique_ids_at_end = len({py[pid_col_idx] for py in standardised_names_table})
+
+    # make a change log
+    out_path = name_change_corrections_log_path + "fullnames.csv" if fullnames \
+        else name_change_corrections_log_path + "surnames_given_names.csv"
+    with open(out_path, 'w') as out_f:
+        writer = csv.writer(out_f)
+        [writer.writerow(associated_names) for associated_names in associated_names_log]
+        writer.writerow(['\n']), writer.writerow(["TOTAL NAMES REDUCED", unique_ids_at_start - unique_ids_at_end])
+        writer.writerow(["NUMBER OF NAME CHANGES PER YEAR"])
+        [writer.writerow([k, v]) for k, v in change_distr_year.items()]
+
+    return helpers.deduplicate_list_of_lists(standardised_names_table)
+
+
+def spurious_name_change_identifiers(inferior_year_careers_end, superior_year_careers_start, id_changes,
+                                     associated_names_log, change_distr_year, profession, fullnames=False):
+    """
+    This function finds names that erroneously change between two years, so that it looks like a person retired in
+    year X and another one joined in year X+1, when it's really just the same person under two different names.
+
+    After finding the name change error, it corrects it by assigning both names the same unique person ID.
+
+    This function uses three methods to find out spurious name changes: by looking at surname changes, given name
+    changes, and slight changes in full name spelling (where "slight" is defined as "3 Levenshtien/edit distance").
+
+    :param inferior_year_careers_end: list of person years (each a list) from people whose careers ended in said year;
+                                      this is the lower year of a pair of years, e.g. 2004 out of (2004, 2005)
+    :param superior_year_careers_start: list of person years (each a list) from people whose careers began in said year;
+                                        this is the higher year of a pair of years, e.g. 2005 out of (2004, 2005)
+    :param id_changes: a dict recording the mapping of IDs. When we realise that two different IDs refer to the
+                       same person, this dict tells us which ID to map to which, e.g. 123 : 127 means that ID#123 should
+                       become ID#127.
+    :param associated_names_log: a list of lists which contains a csv.writer-friendly log, which will let us visually
+                                 inspect which names we associated as belonging to the same person
+    :param change_distr_year: dict, keys are year and values are counts of name-changes/standardisations per year. This
+                              dictionary shows us the distribution of changes across years, helps us see which years
+                              seem to require more correction (to see if that patterns makes sense with other known
+                              information from data  collection)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param fullnames: bool, True if correcting for spurious full name changes, False if separately correcting for both
+                      given name and surname spurious changes; fullname = surname + given names
+    :return: None, just updates dicts and lists
+    """
+
+    workplace_cod_idx = helpers.get_header(profession, "preprocess").index("instituţie")
+    yr_col_idx = helpers.get_header(profession, "preprocess").index("an")
+    surname_col_idx = helpers.get_header(profession, "preprocess").index("nume")
+    given_name_col_idx = helpers.get_header(profession, "preprocess").index("prenume")
+    pid_col_idx = helpers.get_header(profession, "preprocess").index('cod persoană')
+    gend_col_idx = helpers.get_header(profession, "preprocess").index('sex')
+
+    # FOR THE SURNAME CHANGE CATCHER
+    # in each profession there are certain name in the inferior year that we know (from poking at the tables) which map
+    # onto more than name in the superior year, which is a noise-introducing error; mark these names so we avoid them
+    judges_names_skip = {"ALDEA | MARIA", "ATUDOSEI | MARIA", "BARBU | LARISA LUMINIŢA",
+                         "BRĂESCU | MIHAELA", "CERNAT | DOINIŢA",
+                         "FRUNZĂ | NECTARA NICOLETA", "GIANGU | MARIA", "HRIB | CRISTINA",
+                         "IVĂNUŞCĂ | MARIA", "LEFTER | VIORICA", "MIHALCEA | DOINIŢA",
+                         "MUDAVA | SIMONA", "MUNTEAN | DANIELA", "VODA | CODRUŢA",
+                         "MĂNĂSTIREANU | CRISTINA", "NECULAU | CRISTINA",
+                         "PREDAN | GEORGETA", "SCRIMINŢI | ELENA", "TEODORESCU | OANA",
+                         "STOICA | DOINIŢA", "TRANDAFIR | DOINIŢA", "URSACHE | MARIA"}
+
+    name_pairs_lev_dist_apart = []
+    if fullnames:
+        # FOR THE FULL NAME CHANGE CATCHER
+        # get lists of all full names, one list each for the inferior year and superior years
+        # and compute Levenshtein/edit distance between the inferior and superior year name lists
+        # NB: chose Levenshtein distance of 3 after experimentation, found this number has good true to false
+        # positive rate
+        inf_full_names = [py[surname_col_idx] + ' | ' + py[given_name_col_idx] for py in inferior_year_careers_end]
+        sup_full_names = [py[surname_col_idx] + ' | ' + py[given_name_col_idx] for py in superior_year_careers_start]
+        name_pairs_lev_dist_apart = standardise.pairwise_ldist(inf_full_names + sup_full_names, 3)
+
+    # do a pairwise comparison of person-years ending in inferior year and person-years beginning in superior year
+    for inf_py in inferior_year_careers_end:
+        inf_sn, inf_gn = inf_py[surname_col_idx], inf_py[given_name_col_idx]
+        inf_fn, inf_gndr = inf_sn.split() + inf_gn.split(), inf_py[gend_col_idx]
+
+        for sup_py in superior_year_careers_start:
+            sup_sn, sup_gn = sup_py[surname_col_idx], sup_py[given_name_col_idx]
+            sup_fn, sup_gndr = sup_sn.split() + sup_gn.split(), sup_py[gend_col_idx]
+
+            if fullnames:
+                # SPURIOUS FULL NAME CHANGE DETECTOR
+                for name_pair in name_pairs_lev_dist_apart:
+                    lev_inf_fn, lev_sup_fn = inf_sn + ' | ' + inf_gn, sup_sn + ' | ' + sup_gn
+
+                    # if the fullnames differ by 3 characters
+                    if lev_inf_fn in name_pair and lev_sup_fn in name_pair:
+
+                        # we only look for putative changes within one workplace
+                        if inf_py[workplace_cod_idx] == sup_py[workplace_cod_idx]:
+
+                            # only consider cases where the gender does not change; by convention, map/standardise from
+                            # the person ID from the superior year to the person ID from the inferior year
+                            if inf_gndr == sup_gndr:
+                                id_changes.update({sup_py[pid_col_idx]: inf_py[pid_col_idx]})
+                                associated_names_log.append([inf_fn, sup_fn, "", "lev_dist_corrector"])
+                                change_distr_year[inf_py[yr_col_idx]] += 1
+            else:
+
+                # SPURIOUS GIVEN NAME CHANGE DETECTOR
+                # the given names must differ, the surnames must be identical
+                if inf_gn != sup_gn and inf_sn == sup_sn:
+
+                    # we only look for putative changes within one workplace
+                    if inf_py[workplace_cod_idx] == sup_py[workplace_cod_idx]:
+
+                        # only consider cases where the gender does not change
+                        if inf_gndr == sup_gndr:
+                            id_changes.update({sup_py[pid_col_idx]: inf_py[pid_col_idx]})
+                            associated_names_log.append([inf_fn, sup_fn, "", "given_name_corrector"])
+                            change_distr_year[inf_py[yr_col_idx]] += 1
+
+                # SPURIOUS SURNAME CHANGE DETECTOR
                 # the given names must be identical, the surnames must differ
                 if inf_gn == sup_gn and inf_sn != sup_sn:
 
@@ -331,33 +448,11 @@ def female_surname_change_corrector(person_year_table, profession, female_surnam
                                     # avoid names that have been ad-hoc marked as problematic
                                     if inf_sn + ' | ' + inf_gn not in judges_names_skip:
                                         id_changes.update({sup_py[pid_col_idx]: inf_py[pid_col_idx]})
-                                        associated_names_log.append([inf_fn, sup_fn])
-                                        change_yr_distr[inf_py[yr_col_idx]] += 1
+                                        associated_names_log.append([inf_fn, sup_fn, "", "surname_corrector"])
+                                        change_distr_year[inf_py[yr_col_idx]] += 1
 
                             else:  # single-surname cases
                                 if inf_sn + ' | ' + inf_gn not in judges_names_skip:
-                                    # print(inf_fn, ' | ', sup_fn)
                                     id_changes.update({sup_py[pid_col_idx]: inf_py[pid_col_idx]})
-                                    associated_names_log.append([inf_fn, sup_fn])
-                                    change_yr_distr[inf_py[yr_col_idx]] += 1
-
-    # change the ID's to group together the erroneously-split persons
-    for row in person_year_table:
-        pers_id = row[pid_col_idx]
-        if pers_id in id_changes:
-            standardised_names_table.append([row[0]] + [id_changes[pers_id]] + row[2:])
-        else:
-            standardised_names_table.append(row)
-
-    # see how many unique ID's we have after we've combined/standardised the names
-    unique_ids_at_end = len({py[pid_col_idx] for py in standardised_names_table})
-
-    # make a change log
-    with open(female_surname_change_log_path, 'w') as out_f:
-        writer = csv.writer(out_f)
-        [writer.writerow(associated_names) for associated_names in associated_names_log]
-        writer.writerow(['\n']), writer.writerow(["TOTAL NAMES REDUCED", unique_ids_at_start - unique_ids_at_end])
-        writer.writerow(["NUMBER OF NAME CHANGES PER YEAR"])
-        [writer.writerow([k, v]) for k, v in change_yr_distr.items()]
-
-    return helpers.deduplicate_list_of_lists(standardised_names_table)
+                                    associated_names_log.append([inf_fn, sup_fn, "", "surname_corrector"])
+                                    change_distr_year[inf_py[yr_col_idx]] += 1
