@@ -273,7 +273,7 @@ def time_to_promotion(person, profession, level, first_x_years):
     Given a career level, find how long (i.e. how many person years) it took to get there.
 
     :param person: a list of person years that share a unique person ID
-    :param profession:
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param level: string, 'tribunal', 'appellate', or 'high court', indicating position in judicial hierarchy
     :param first_x_years: int, how many years after start of career we consider, e.g. ten years after joing profession
     :return: t_to_promotion, int, how long (in years) it took to get promoted
@@ -318,3 +318,156 @@ def min_time_promotion(hierarchical_level):
     """
 
     return {'low court': 0, 'tribunal': 3, 'appellate': 6, 'high court': 10}[hierarchical_level]
+
+
+# TRANSITION MATRICES FOR INTER-LEVEL MOBILITY
+
+def inter_level_transition_matrices(person_year_table, profession, out_dir):
+    """
+
+    NB: ONLY FOR JUDGES AND PROSECUTORS!
+
+    For each year, show a transition probability matrix. If there are are N levels in the organisational hierarchy,
+    then there are N rows and N+4 columns: one extra column for probability of retirement out of that level, another
+    for probability of no movement at all (i.e. stay in your position), another column of the total number of people
+    available to move in that year (this is just the sum of people in that level in year X, and the denominator for
+    the percentages), and one last column to count how many observations we skipped, because said people in that year
+    had discontinuities in their careers (e.g. wsa there 1987-1992, then 1996-2004).
+
+    Separately, each year also has a 2xN+2 table, where each column represents the count of entry directly into
+    that level (i.e. recruitment from outside the system) for the first row, and the percent of entrants from the
+    outside vis-a-vis all people in that level THE PREVIOUS YEAR. The last column is shows the sum of all entrants
+    for the year in the first row, and the last column shows how many people were in said level in the previous year.
+
+    The cells of the NxN submatrix of the transition probability matrix are read as
+    "% of total transitions from i to j", where "i" is the row index and "j" the column index.
+
+    TRANSITION PROBABILITY MATRIX FOR YEAR X
+
+                Level 1     Level 2     Level 3     Retire      Stay Put    Level Sum   Discontinuous
+    Level 1
+    Level 2
+    Level 3
+
+    ENTRY MATRIX FOR YEAR X
+
+                            Level 1     Level 2     Level 3     Level Sum       Total In Level Previous Year
+    Count Entries
+    Percent Entries
+      of Current Level
+
+    This function spits out one .csv per profession, where each CSV contains the transition matrices for all observed
+    years except the left and right censors, since we judge entry and departure based on anterior and posterior year
+    to focal year X.
+
+    NB: lower levels are higher up the hierarchy, so 1 > 2 in terms of hierarchical position
+
+    :param person_year_table: a table of person years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param out_dir: str, the path to where the transition matrices will live
+    :return: None
+    """
+
+    # get handy column indexes
+    yr_col_idx = helpers.get_header(profession, 'preprocess').index('an')
+    pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
+    wrkplc_idx = helpers.get_header(profession, 'preprocess').index('instituţie')
+    lvl_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+
+    years = sorted(list({int(py[yr_col_idx]) for py in person_year_table}))
+
+    # make the global transition dict, a three-layer dict: first layer is "year", second layer is "level",
+    # third level is measures
+    global_trans_dict = {}
+    for yr in years:
+        global_trans_dict[yr] = {}
+
+        # number of levels can change with years
+        levels = sorted(list({int(py[lvl_col_idx]) for py in person_year_table if int(py[yr_col_idx]) == yr}))
+
+        # get a list of all possible moves, e.g. "1-3" means "demotion from level 1 to level 3"
+        possible_moves = []
+        for i in levels:
+            for j in levels:
+                possible_moves.append(str(i) + '-' + str(j))
+            possible_moves.append(str(i) + '-' + "retire"), possible_moves.append(str(i) + '-' + "static")
+            possible_moves.append(str(i) + '-' + "level_sum"), possible_moves.append(str(i) + '-' + "discontinuous")
+
+        # update the global transition dict with the base, count dict for each level
+        for lvl in levels:
+            global_trans_dict[yr][lvl] = {pm: 0 for pm in possible_moves if int(pm[0]) == lvl}
+
+    # need to do some ad-hoc correction to account for years in which the number of levels expands, either because
+    # we now have data on a new level that was already there (e.g. we have data on the High Court only starting in 1988)
+    # or in reality a new level was added (e.g. introduction of appellate courts in 1993). Basically, 1987 and 1992
+    # need to resemble the year after, so we can properly imput mobility data
+    global_trans_dict[1987] = deepcopy(global_trans_dict[1988])
+    global_trans_dict[1992] = deepcopy(global_trans_dict[1993])
+
+    # now fill up the dict with counts
+
+    # group table by persons
+    person_year_table = sorted(person_year_table, key=itemgetter(pid_col_idx, yr_col_idx))
+    people = [person for k, [*person] in itertools.groupby(person_year_table, key=itemgetter(pid_col_idx))]
+
+    for person in people:
+        for idx, pers_yr in enumerate(person):
+            current_wrkplc, current_lvl = pers_yr[wrkplc_idx], int(pers_yr[lvl_col_idx])
+            current_yr = int(pers_yr[yr_col_idx])
+
+            # update the level sum
+            lvl_sum_key = str(current_lvl) + '-' + "level_sum"
+            global_trans_dict[current_yr][current_lvl][lvl_sum_key] += 1
+
+            if idx < len(person) - 1:  # all but retirement year
+                next_yr_wrkplc, next_yr_lvl = person[idx + 1][wrkplc_idx], person[idx + 1][lvl_col_idx]
+                next_yr_yr = person[idx + 1][yr_col_idx]
+
+                # look only at changes in consecutive years; this avoids people with interrupted careers,
+                # which usually occur in the sampled periods because people leave and re-enter the sample
+
+                if int(current_yr) + 1 == int(next_yr_yr):
+
+                    if current_wrkplc != next_yr_wrkplc:  # workplace mobility occurred
+
+                        if current_lvl != next_yr_lvl:  # hierarchical mobility occurred
+                            hierarch_mob_key = str(current_lvl) + '-' + str(next_yr_lvl)
+                            global_trans_dict[current_yr][current_lvl][hierarch_mob_key] += 1
+
+                        else:  # no hierarchical mobility, i.e. movement within the level
+                            within_mob_key = str(current_lvl) + '-' + str(current_lvl)
+                            global_trans_dict[current_yr][current_lvl][within_mob_key] += 1
+
+                    else:  # no mobility at all
+                        static_key = str(current_lvl) + '-' + "static"
+                        global_trans_dict[current_yr][current_lvl][static_key] += 1
+
+                else:  # count persons skipped due to discontinuous careers so we know how much data we're excluding
+                    discontinuous_key = str(current_lvl) + '-' + "discontinuous"
+                    global_trans_dict[current_yr][current_lvl][discontinuous_key] += 1
+
+        # retirement year
+        retirement_level, retirement_year = int(person[-1][lvl_col_idx]), int(person[-1][yr_col_idx])
+        retirement_key = str(person[-1][lvl_col_idx]) + '-' + "retire"
+        global_trans_dict[retirement_year][retirement_level][retirement_key] += 1
+
+    with open(out_dir + 'yearly_count_hierarchical_transition_matrices.csv', 'w') as out_ct, \
+            open(out_dir + 'yearly_count_hierarchical_probability_transition_matrices.csv', 'w') as out_pb:
+
+        count_writer, prob_writer = csv.writer(out_ct), csv.writer(out_pb)
+        count_writer.writerow([profession]), count_writer.writerow([]),
+        prob_writer.writerow([profession]), prob_writer.writerow([]),
+
+        for yr in global_trans_dict:
+            count_writer.writerow([yr]), prob_writer.writerow([yr])
+
+            for lvl in global_trans_dict[yr]:
+                count_row = [str(key) + ' : ' + str(value) for key, value in global_trans_dict[yr][lvl].items()]
+                count_writer.writerow(count_row)
+
+                level_sum_key = str(lvl) + '-' + "level_sum"
+                level_sum = global_trans_dict[yr][lvl][level_sum_key]
+                prob_row = [str(key) + ' : ' + str(round(helpers.weird_division(value, level_sum), 4))
+                            for key, value in global_trans_dict[yr][lvl].items()]
+                prob_writer.writerow(prob_row)
+            count_writer.writerow([]), prob_writer.writerow([])
