@@ -17,7 +17,8 @@ from preprocess.inheritance import inheritance
 from helpers import helpers
 
 
-def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, name_correct_log_path, profession):
+def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, name_correct_log_path, profession,
+               sampling_month=None):
     """
     Standardise data from person-period tables at different levels of time granularity (year and month levels),
     sample person-months to get person-years, combine this sample with the original year-level data, clean the
@@ -30,6 +31,7 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, n
     :param pids_log_path: path where we want the logs from the unique-person-ID-giver to live
     :param name_correct_log_path: path where we want the logs from spurious name change correctors to live
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param sampling_month: if not None, then an int representing the month from which we sample, e.g. 4 = April
     :return: None
     """
 
@@ -51,8 +53,8 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, n
     # NB: the sampler drops the month column -- this is necessary for row deduplication to work properly
     # NB: deduplicates because some person-years in both year- and month-level (sampled) data
     if ppts['month'][0]:
-        sm = sample.get_sampling_month(profession)
-        year_sampled_from_months = sample.person_years(ppts['month'][0], sm, change_dict)
+        samp_mo = sampling_month if sampling_month else sample.get_sampling_month(profession)
+        year_sampled_from_months = sample.person_years(ppts['month'][0], samp_mo, change_dict)
         ppts['year'][0].extend(year_sampled_from_months)
         # deduplicate; limit all rows to first four entries, for unknown reason sometimes nan's appear in fifth position
         ppts['year'][0] = helpers.deduplicate_list_of_lists([row[:4] for row in ppts['year'][0]])
