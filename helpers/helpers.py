@@ -2,11 +2,8 @@
 Handy helper functions.
 """
 
-import csv
 import itertools
 from operator import itemgetter
-from preprocess import standardise
-from preprocess import preprocess
 
 
 def get_header(profession, stage):

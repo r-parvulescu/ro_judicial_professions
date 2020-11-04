@@ -96,7 +96,7 @@ def preprocess(in_directory, prep_table_out_path, std_log_path, pids_log_path, n
         ppts['year'][0] = spurious_name_change_corrector(ppts['year'][0], profession, name_correct_log_path,
                                                          fullnames=False)
         print("RUNNING: SPURIOUS FULLNAME CHANGE CORRECTOR")
-        ppts['year'][0] = spurious_name_change_corrector(ppts['year'][0], profession, name_correct_log_path + '2',
+        ppts['year'][0] = spurious_name_change_corrector(ppts['year'][0], profession, name_correct_log_path,
                                                          fullnames=True)
 
     # write the preprocessed table to disk
@@ -314,8 +314,8 @@ def spurious_name_change_corrector(person_year_table, profession, name_change_co
     unique_ids_at_end = len({py[pid_col_idx] for py in standardised_names_table})
 
     # make a change log
-    out_path = name_change_corrections_log_path + "fullnames.csv" if fullnames \
-        else name_change_corrections_log_path + "surnames_given_names.csv"
+    out_path = name_change_corrections_log_path + "_fullnames.csv" if fullnames \
+        else name_change_corrections_log_path + "_surnames_given_names.csv"
     with open(out_path, 'w') as out_f:
         writer = csv.writer(out_f)
         [writer.writerow(associated_names) for associated_names in associated_names_log]

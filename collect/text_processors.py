@@ -128,7 +128,7 @@ given_name_mistakes_transdict = {
     "BAGDAN": "BOGDAN", "GABRIELVALENTIN": "GABRIEL VALENTIN", "FLORINEI": "FLORINEL", "GRIELA": "GABRIELA",
     "LONUŢ": "IONUŢ", "GHEOGHE": "GHEORGHE", "CISTODOR": 'CRISTODOR', "CTIN": "CONSTANTIN", "LOAN": "IOAN",
     "ISABERLA": "ISABELA", "ULPIN": "ULPIU", "ALEANDRINA": "ALEXANDRINA", "CARMNEN": "CARMEN", "MIAHELA": "MIHAELA",
-    "GEOREGETA": "GEORGETA"
+    "GEOREGETA": "GEORGETA", "CORLL": "CORIL"
 }
 
 given_name_diacritics_transdict = {
@@ -160,7 +160,7 @@ given_name_diacritics_transdict = {
     "ANIŞOARĂ": "ANIŞOARA", "ILEANUŢA": "ILENUŢA", "ALIOSA": "ALIOŞA", "FRASINA": "FRĂSINA",
     "TANCUŢA": "TĂNCUŢA", "JANOS": "JÁNOS", "TAŢIANA": "TATIANA", "AŞLAN": 'ASLAN',
     "SADÎC": 'SADÂC', "JENO": "JENŐ", "JENÖ": "JENŐ", "GABOR": "GÁBOR", "MĂRIA": "MARIA", "MADALIN": "MĂDĂLIN",
-    "ISTVAN": "ISTVÁN", "GHINTUIALA": "GHINŢUIALA", "GHIMISLIU": "GHIMIŞLIU",
+    "ISTVAN": "ISTVÁN", "GHINTUIALA": "GHINŢUIALA", "GHIMISLIU": "GHIMIŞLIU", "CATALINA": "CĂTĂLINA"
 }
 
 # HELPERS FOR JUDGES #
@@ -409,7 +409,8 @@ judges_surname_transdict = {
     "RACLEA": "RÂCLEA", "GOSER": "GOSLER", "SFÂRLEAAZĂ": "SFÂRLEAZĂ", "TERODORESESCU": "TEDORESCU",
     "PREPELITA": "PREPELIŢĂ", "CAPITANESCU": "CĂPITANESCU", "BALAUNŢESCU": "BĂLĂUNŢESCU",
     "ŞERCAIANU": "ŞERCĂIANU", "VISOIU": "VIŞOIU", "UTII": "UŢII", "TĂMAS": "TĂMAŞ", "TOMSA": "TOMŞA",
-    "TALOS": "TALOŞ", "SĂRĂCUT": "SĂRĂCUŢ", "PARVU": "PÂRVU"
+    "TALOS": "TALOŞ", "SĂRĂCUT": "SĂRĂCUŢ", "PARVU": "PÂRVU", "BULARCA": "BULARCĂ", "BAJMATĂRĂ": "BAJMĂTARĂ",
+    "SZABÓ": "SZÁBO"
 }
 
 

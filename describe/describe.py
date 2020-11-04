@@ -12,7 +12,7 @@ from preprocess import sample
 def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
              profession, start_year, end_year, unit_type=None):
     """
-    Generate basic descriptives , and write them to disk.
+    Generate tables of basic descriptives , and write them to disk.
 
     :param pop_in_file_path: path to the population-level data file
     :param sampling_scheme: str, what kind of sample we want from the population-level base data
@@ -28,6 +28,8 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
                            and another where rows are metrics for each hierarchical level of the judicial system
     :return: None
     """
+
+    print(sampling_scheme)
 
     table = sample.get_sample_type(pop_in_file_path, sampling_scheme, profession)
 
@@ -62,15 +64,17 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
         # make tables of raw of inter-appellate transfers
         geographic.inter_unit_mobility_table(table, out_dir_mob, profession, "ca cod")
 
-        # make table for hierarchical mobility and for career climbers
+        # make table for hierarchical mobility (total and by gender) and for career climbers
         hierarchical.hierarchical_mobility_table(table, out_dir_mob, profession)
         hierarchical.career_climbers_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
                                            first_x_years=10)
 
+        # make yearly tables of personal mobility transition probabilities between hierarchical levels
+        hierarchical.inter_level_transition_matrices(table, profession, out_dir_mob)
+
         # make table of sequences combining hierarchical position and geographic movement across appellate region
         sequences.get_geographic_hierarchical_sequences(table, profession, out_dir_mob)
 
-    """
     # make tables for professional inheritance, for notaries and executori only
     # different professions have different sizes and structures, so different name rank and year window parameters
     if profession in {"notaries", "executori"}:
@@ -83,7 +87,6 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
                                            num_top_names=num_top_names, multi_name_robustness=False)
             inheritance.prof_inherit_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
                                            num_top_names=num_top_names, multi_name_robustness=True)
-    """
 
 
 def year_counts_table(person_year_table, start_year, end_year, profession, out_dir, unit_type=None):
