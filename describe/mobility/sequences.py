@@ -7,9 +7,10 @@ import operator
 import itertools
 import statistics
 import csv
+from copy import deepcopy
 
 
-def get_geographic_hierarchical_sequences(person_year_table_path, profession, outdir):
+def get_geographic_hierarchical_sequences(person_year_table, profession, outdir):
     """
 
     FOR JUDGES AND PROSECUTORS ONLY
@@ -53,20 +54,17 @@ def get_geographic_hierarchical_sequences(person_year_table_path, profession, ou
         TB-MB = tribunal, move between regions
         CA-MB = court of appeals, move between regions
 
-        HC-M = high court, move (because there is only one court in the land)
+        HC-MW = high court, move within regions (from Bucharest to the High Court, which is also in Bucharest)
+        HC-MB = high court, move between regions (from the provinces to Bucharest, where the High Court is)
 
-    The resulting sequences will look like e.g. LC-NM|LC-NM|TB-MW|TB-NM|TB-NM|CA-MB|CA-NM, where each year is
-    separated by the pipe "|".
+    The resulting sequences will look like e.g. LC-NM-LC-NM-TB-MW-TB-NM-TB-NM-CA-MB-CA-NM, where each year is
+    separated by the pipe "-".
 
-    :param person_year_table_path: path to a table of person-years, as a list of lists
+    :param person_year_table: a table of person-years, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param outdir: directory in which we want to place the data table
     :return: None
     """
-
-    # load the person-year table
-    with open(person_year_table_path, 'r') as in_f:
-        person_year_table = list(csv.reader(in_f))[1:]
 
     # get indices for person ID, year, ca cod, trib cod, j cod, and level code
     pid_col_idx = helpers.get_header(profession, 'preprocess').index('cod persoană')
@@ -89,26 +87,30 @@ def get_geographic_hierarchical_sequences(person_year_table_path, profession, ou
         # get the full sequence, and truncated at five and ten years
         geog_lvl_moves_seq = get_geog_lvl_moves_seq(pers, profession)
         began_at_low_court = 1 if geog_lvl_moves_seq[:2] == "LC" else 0
-        first_five_yrs = '|'.join(geog_lvl_moves_seq.split('|')[:5]) if len(geog_lvl_moves_seq) > 29 else ''
-        first_ten_yrs = '|'.join(geog_lvl_moves_seq.split('|')[:10]) if len(geog_lvl_moves_seq) > 54 else ''
+        first_ten_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:10]) if len(geog_lvl_moves_seq) > 54 else ''
+        first_five_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:5]) if len(geog_lvl_moves_seq) > 29 else ''
+
         between_moves = count_between_moves_in_time_interval(geog_lvl_moves_seq)
 
         time_to_tb_promotion, time_to_ac_promotion = time_to_promotion(geog_lvl_moves_seq)
 
         person_row = [pid, entry_yr, gndr, between_moves["first 6 years"], between_moves["first 11 years"],
                       between_moves["first 15 years"], began_at_low_court, time_to_tb_promotion, time_to_ac_promotion,
-                      '', '', len(geog_lvl_moves_seq.split('|')), geog_lvl_moves_seq, first_five_yrs, first_ten_yrs]
+                      '', '', len(geog_lvl_moves_seq.split('-')), geog_lvl_moves_seq, first_five_yrs, first_ten_yrs]
 
         person_sequences_table.append(person_row)
 
     # now for each person, mark their cohort's average time to tribunal and court of appeals promotion
     average_time_to_promotion(person_sequences_table)
 
+    # for each column containing sequences, get element frequencies
+    element_frequencies(person_sequences_table)
+
     # write the person-sequence table to disk as a csv
     header = ["pid", "entry_year", "gender", "region_moves_first_6_yrs", "region_moves_first_11_yrs",
               "region_moves_first_15_yrs", "began_at_LC", "time_to_tb_prom", "time_to_ac_prom",
               "cohort_avg_time_to_tb_prom", "cohort_avg_time_to_ac_prom", "sequence_career_length",
-              "geog_lvl_moves_sequence", "first_five_yrs_seq", "first_ten_yrs_seq"]
+              "geog_lvl_moves_sequence", "first_ten_yrs_seq", "first_five_yrs_seq"]
     with open(outdir + "sequences_data_table.csv", 'w') as out_f:
         writer = csv.writer(out_f)
         writer.writerow(header)
@@ -121,14 +123,18 @@ def get_geog_lvl_moves_seq(pers, profession):
 
     :param pers: list of person-years, sorted by years (in increasing order) and sharing a unique person-ID
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :return: str, sequence of geographic moves - hierarchical position with elements separated by a bar ("|"),
-                  e.g. LC-NM|LC-NM|TB-MW|TB-NM|TB-NM|CA-MB|CA-NM
+    :return: str, sequence of geographic moves - hierarchical position with elements separated by a hyphen ("-"),
+                  e.g. LC-NM-LC-NM-TB-MW-TB-NM-TB-NM-CA-MB-CA-NM
     """
 
+    yr_col_idx = helpers.get_header(profession, 'preprocess').index('an')
     ca_col_idx = helpers.get_header(profession, 'preprocess').index('ca cod')
     trib_col_idx = helpers.get_header(profession, 'preprocess').index('trib cod')
     j_col_idx = helpers.get_header(profession, 'preprocess').index('jud cod')
     lvl_col_idx = helpers.get_header(profession, 'preprocess').index('nivel')
+
+    # sort the person by year
+    pers.sort(key=operator.itemgetter(yr_col_idx))
 
     level_codes = {"1": "LC", "2": "TB", "3": "CA", "4": "HC"}
 
@@ -171,10 +177,10 @@ def get_geog_lvl_moves_seq(pers, profession):
             else:  # no move
                 geog_move = "NM"
 
-            mov_seq.append(level_codes[this_yr_lvl] + '-' + geog_move)
+            mov_seq.append(level_codes[this_yr_lvl] + '+' + geog_move)
 
-    # return sequence as string, with year elements divided by the "|" bar
-    return '|'.join(mov_seq)
+    # return sequence as string, with year elements divided by the "-" hyphen
+    return '-'.join(mov_seq)
 
 
 def count_between_moves_in_time_interval(geog_lvl_moves_seq):
@@ -192,7 +198,7 @@ def count_between_moves_in_time_interval(geog_lvl_moves_seq):
     :return: return a 3-tuple
     """
 
-    split_seq = geog_lvl_moves_seq.split('|')
+    split_seq = geog_lvl_moves_seq.split('-')
     num_years = len(split_seq)
 
     moves_in_span = {"first 6 years": [], "first 11 years": [], "first 15 years": []}
@@ -225,11 +231,11 @@ def time_to_promotion(person_sequence):
     How many years it took the person to get promoted too tribunal and court of appeals. If never promoted,
     leave empty.
 
-    :param person_sequence: a string of elements separated by the pipe, e.g. LC-NM|LC-NM|TB-MW|TB-NM|TB-NM|CA-MB|CA-NM
+    :param person_sequence: a string of elements separated by the pipe, e.g. LC-NM-LC-NM-TB-MW-TB-NM-TB-NM-CA-MB-CA-NM
     :return: 2-tuple of ints, first string is number of years to tribunal promotion, second is number of years
              to court of appeals promotion
     """
-    split_seq = person_sequence.split('|')
+    split_seq = person_sequence.split('-')
 
     tb_prom = next((elem for elem in split_seq if "TB" in elem), None)
     ac_prom = next((elem for elem in split_seq if "CA" in elem), None)
@@ -276,3 +282,37 @@ def average_time_to_promotion(person_sequences_table):
         entry_cohort_year = person[1]
         person[9] = chrt_prom_dict[entry_cohort_year]["mean TB promotion time"]
         person[10] = chrt_prom_dict[entry_cohort_year]["mean CA promotion time"]
+
+
+def element_frequencies(person_sequences_table):
+    """
+    At the bottom of each column containing sequences, add a row indicating the frequency distribution of elements
+    in the sequences in that column, e.g. LC-NM: 20, LC-MW: 2, etc. Sort that list by frequency in decreasing order.
+
+    :param person_sequences_table: a table (as list of lists) of persons with associated sequence and career info
+    :return: None, just updates the table we put in
+    """
+
+    elem_freq_dict = {"LC+NM": 0, "TB+NM": 0, "CA+NM": 0, "HC+NM": 0, "LC+MW": 0, "TB+MW": 0, "CA+MW": 0,
+                      "LC+MB": 0, "TB+MB": 0, "CA+MB": 0, "HC+MB": 0, "HC+MW": 0}
+
+    elem_freqs = []
+
+    # the last three columns of the table contain sequences, so calculate element frequences for each column
+    for idx in [-3, -2, -1]:
+        local_elem_freq_dict = deepcopy(elem_freq_dict)
+        for row in person_sequences_table[1:]:  # skip the header
+            seq = row[idx]
+            for elem in seq.split("-")[1:]:  # the first element (e.g. "LC") does not have a move value by definition
+                local_elem_freq_dict[elem] += 1
+        freqs = sorted(list(local_elem_freq_dict.items()), key=operator.itemgetter(1), reverse=True)
+        elem_freqs.append(freqs)
+
+    # now add these frequencies to the end of the table
+    person_sequences_table.append([])
+    person_sequences_table.append(["Full Sequences: Element Frequencies"])
+    person_sequences_table.append(elem_freqs[0])
+    person_sequences_table.append(["First Five Years: Element Frequencies"])
+    person_sequences_table.append(elem_freqs[1])
+    person_sequences_table.append(["First Ten Years: Element Frequencies"])
+    person_sequences_table.append(elem_freqs[2])
