@@ -10,10 +10,10 @@ import csv
 from copy import deepcopy
 
 
-def get_geographic_hierarchical_sequences(person_year_table, profession, outdir):
+def get_geographic_hierarchical_sequences(person_year_table, right_censor_year, profession, outdir):
     """
 
-    FOR JUDGES AND PROSECUTORS ONLY
+    FOR JUDGES AND PROSECUTORS ONLY, ONLY FROM 2006 ONWARD
 
     Makes a table with twelve columns (zero-indexed):
 
@@ -61,7 +61,8 @@ def get_geographic_hierarchical_sequences(person_year_table, profession, outdir)
     separated by the pipe "-".
 
     :param person_year_table: a table of person-years, as a list of lists
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :param right_censor_year: int, the year in which we censor
     :param outdir: directory in which we want to place the data table
     :return: None
     """
@@ -74,47 +75,90 @@ def get_geographic_hierarchical_sequences(person_year_table, profession, outdir)
     # initialise the person-sequence table
     person_sequences_table = []
 
+    # initialise one set of personal IDs of people in two places at once, and another of people with career gaps
+    two_places_at_once, career_gaps = set(), set()
+
     # sort people by unique ID and year, then group by unique ID
     person_year_table.sort(key=operator.itemgetter(pid_col_idx, yr_col_idx))
-    persons = [pers for key, [*pers] in itertools.groupby(person_year_table, key=operator.itemgetter(pid_col_idx))]
+    people = [person for key, [*person] in itertools.groupby(person_year_table, key=operator.itemgetter(pid_col_idx))]
 
     # for each person
-    for pers in persons:
-        pid = pers[0][pid_col_idx]
-        entry_yr = pers[0][yr_col_idx]  # the year they entered the profession
-        gndr = pers[0][gend_col_idx]  # person gender
+    for person in people:
+        # get a sorted list of all the unique years of a person's career
+        career_yrs = sorted(list({int(pers_yr[yr_col_idx]) for pers_yr in person}))
+        entry_yr = career_yrs[0]
 
-        # get the full sequence, and truncated at five and ten years
-        geog_lvl_moves_seq = get_geog_lvl_moves_seq(pers, profession)
-        began_at_low_court = 1 if geog_lvl_moves_seq[:2] == "LC" else 0
-        first_ten_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:10]) if len(geog_lvl_moves_seq) > 54 else ''
-        first_five_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:5]) if len(geog_lvl_moves_seq) > 29 else ''
+        # only consider careers starting in 2006 or later
+        if 2006 <= entry_yr:
+            pid = person[0][pid_col_idx]
+            gndr = person[0][gend_col_idx]  # person's gender
 
-        between_moves = count_between_moves_in_time_interval(geog_lvl_moves_seq)
+            # if a person is in two places at once they'll have more person-years than years; save to log and skip
+            if len(person) > len(career_yrs):
+                two_places_at_once.add(pid)
+                continue
 
-        time_to_tb_promotion, time_to_ac_promotion = time_to_promotion(geog_lvl_moves_seq)
+            # if a person has fewer person-years than the span of their career, there are gaps; save to log and skip
+            if len(person) < len(list(range(career_yrs[0], career_yrs[-1] + 1))):
+                career_gaps.add(pid)
+                continue
 
-        person_row = [pid, entry_yr, gndr, between_moves["first 6 years"], between_moves["first 11 years"],
-                      between_moves["first 15 years"], began_at_low_court, time_to_tb_promotion, time_to_ac_promotion,
-                      '', '', len(geog_lvl_moves_seq.split('-')), geog_lvl_moves_seq, first_five_yrs, first_ten_yrs]
+            # get the full sequence, and truncated at five and ten years
+            geog_lvl_moves_seq = get_geog_lvl_moves_seq(person, profession)
+            began_at_low_court = 1 if geog_lvl_moves_seq[:2] == "LC" else 0
+            first_ten_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:10]) if len(geog_lvl_moves_seq) > 54 else ''
+            first_five_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:5]) if len(geog_lvl_moves_seq) > 29 else ''
 
-        person_sequences_table.append(person_row)
+            between_moves = count_between_moves_in_time_interval(geog_lvl_moves_seq)
+
+            time_to_tb_promotion, time_to_ac_promotion = time_to_promotion(geog_lvl_moves_seq)
+
+            time_to_retirement = ''
+            if entry_yr + len(geog_lvl_moves_seq.split("-")) < right_censor_year:
+                time_to_retirement = len(geog_lvl_moves_seq.split("-"))
+
+            # time to first geographic move
+            frst_geog_mv = next((idx + 1 for idx, mv in enumerate(geog_lvl_moves_seq.split("-")) if mv[-2:] == "MB"),
+                                "")
+
+            person_row = [pid, entry_yr, time_to_retirement, gndr, between_moves["first 6 years"],
+                          between_moves["first 11 years"], between_moves["first 15 years"], began_at_low_court,
+                          time_to_tb_promotion, time_to_ac_promotion, '', '', '', '', frst_geog_mv,
+                          len(geog_lvl_moves_seq.split('-')), geog_lvl_moves_seq, first_five_yrs, first_ten_yrs]
+
+            person_sequences_table.append(person_row)
 
     # now for each person, mark their cohort's average time to tribunal and court of appeals promotion
     average_time_to_promotion(person_sequences_table)
 
-    # for each column containing sequences, get element frequencies
-    element_frequencies(person_sequences_table)
+    # mark career stars
+    career_star(person_sequences_table)
 
     # write the person-sequence table to disk as a csv
-    header = ["pid", "entry_year", "gender", "region_moves_first_6_yrs", "region_moves_first_11_yrs",
-              "region_moves_first_15_yrs", "began_at_LC", "time_to_tb_prom", "time_to_ac_prom",
-              "cohort_avg_time_to_tb_prom", "cohort_avg_time_to_ac_prom", "sequence_career_length",
-              "geog_lvl_moves_sequence", "first_ten_yrs_seq", "first_five_yrs_seq"]
+    header = ["pid", "entry_year", "time_to_retirement", "gender", "region_moves_first_6_yrs",
+              "region_moves_first_11_yrs", "region_moves_first_15_yrs", "began_at_LC", "time_to_tb_prom",
+              "time_to_ca_prom", "cohort_avg_time_to_tb_prom", "cohort_avg_time_to_ca_prom", "tb_career_star",
+              "ca_career_star", "time_to_first_geog_move", "sequence_career_length", "geog_lvl_moves_sequence",
+              "first_ten_yrs_seq", "first_five_yrs_seq"]
     with open(outdir + "sequences_data_table.csv", 'w') as out_f:
         writer = csv.writer(out_f)
         writer.writerow(header)
         [writer.writerow(pers_seq) for pers_seq in person_sequences_table]
+
+    # write out a log with metrics of the full person sequences,
+    # so we know what, which, and why we exclude some observations
+    with open(outdir + "sequences_log.csv", 'w') as out_log:
+        seq_log = []
+        log_writer = csv.writer(out_log)
+        # for each column containing sequences, get element frequencies
+        element_frequencies(person_sequences_table, seq_log)
+        [log_writer.writerow(row) for row in seq_log]
+        log_writer.writerow([])
+        # then mark the number and IDs of people excluded because their careers are glitchy
+        log_writer.writerow(["NUMBER OF PERSONS EXCLUDED BECAUSE THEY'RE IN TWO PLACES AT ONCE & THEIR IDS"])
+        log_writer.writerow([len(two_places_at_once)]), log_writer.writerow([pid for pid in two_places_at_once])
+        log_writer.writerow(["NUMBER OF PERSONS EXCLUDED BECAUSE THEY HAVE CAREER GAPS & THEIR IDS"])
+        log_writer.writerow([len(career_gaps)]), log_writer.writerow([pid for pid in career_gaps])
 
 
 def get_geog_lvl_moves_seq(pers, profession):
@@ -264,32 +308,59 @@ def average_time_to_promotion(person_sequences_table):
     person_sequences_table.sort(key=operator.itemgetter(1))  # (zero-indexed) col 1 = entry_year (i.e. cohort marker)
     cohorts = [chrt for key, [*chrt] in itertools.groupby(person_sequences_table, key=operator.itemgetter(1))]
 
-    # now get the average time to promotion of all those promoted in each cohort
+    # now get the average time to promotion of all those promoted in each cohort, ONLY counting those people whose
+    # careers started at low court, ergo avoiding those who transfered into the profession laterally
     for chrt in cohorts:
-        chrt_yr = chrt[0][1]  # if they started at low court, pers[6] = =1
-        times_to_tb_promotion = list(filter(None, [pers[7] for pers in chrt if pers[6] == 1]))
-        times_to_ac_promotion = list(filter(None, [pers[8] for pers in chrt if pers[6] == 1]))
+        chrt_yr = chrt[0][1]
+        # if they started at low court, pers[7] == 1
+        # person[8] = time to TB promotion, person[9] = time to CA promotion
+        times_to_tb_promotion = list(filter(None, [pers[8] for pers in chrt if pers[7] == 1]))
+        times_to_ca_promotion = list(filter(None, [pers[9] for pers in chrt if pers[7] == 1]))
 
         # put if conditions to avoid empty lists, e.g. nobody promoted for cohort one year before right censor
-        # NB: round down to integer, so when we compare own performance vs average, average is slightly inflated
+        # NB: round down to integer, so more harsh comparison o own performance vs average
         if times_to_tb_promotion:
             chrt_prom_dict[chrt_yr]["mean TB promotion time"] = int(statistics.mean(times_to_tb_promotion))
-        if times_to_ac_promotion:
-            chrt_prom_dict[chrt_yr]["mean CA promotion time"] = int(statistics.mean(times_to_ac_promotion))
+        if times_to_ca_promotion:
+            chrt_prom_dict[chrt_yr]["mean CA promotion time"] = int(statistics.mean(times_to_ca_promotion))
 
     # now associate each row / person observation with their cohort's average promotion times
     for person in person_sequences_table:
         entry_cohort_year = person[1]
-        person[9] = chrt_prom_dict[entry_cohort_year]["mean TB promotion time"]
-        person[10] = chrt_prom_dict[entry_cohort_year]["mean CA promotion time"]
+        person[10] = chrt_prom_dict[entry_cohort_year]["mean TB promotion time"]
+        person[11] = chrt_prom_dict[entry_cohort_year]["mean CA promotion time"]
 
 
-def element_frequencies(person_sequences_table):
+def career_star(person_sequences_table):
     """
-    At the bottom of each column containing sequences, add a row indicating the frequency distribution of elements
-    in the sequences in that column, e.g. LC-NM: 20, LC-MW: 2, etc. Sort that list by frequency in decreasing order.
+    Add indicator for whether a person is a tribunal career star climber or a court of appeals star climber.
+    :param person_sequences_table:
+    :return: None, just update an existing table
+    """
+    # person[8] is time to TB promotion, person[9] time to CA promotion, person[10] is cohort's average time to TB
+    # promotion, and person[11] is cohort's average time to CA promotion
+
+    # person[12] is the indicator for TB career star, person[13] the indicator for CA career star
+    for person in person_sequences_table:
+
+        if person[8] and person[10] != "NA":  # need this condition since not all people climb the ladder
+            person[12] = 1 if person[8] < person[10] else 0
+        else:
+            person[12] = 0
+
+        if person[9] and person[11] != "NA":  # need this condition since not all people climb the ladder
+            person[13] = 1 if person[9] < person[11] else 0
+        else:
+            person[13] = 0
+
+
+def element_frequencies(person_sequences_table, sequences_log):
+    """
+    In a sequence log, add rows indicating the frequency distribution of elements for full sequences, truncated
+    first ten-year sequences, and truncated first five-year sequences. Sort that list by frequency in decreasing order.
 
     :param person_sequences_table: a table (as list of lists) of persons with associated sequence and career info
+    :param sequences_log: list, a log where we record such metrics, which will get written as csv for visual inspection
     :return: None, just updates the table we put in
     """
 
@@ -309,10 +380,7 @@ def element_frequencies(person_sequences_table):
         elem_freqs.append(freqs)
 
     # now add these frequencies to the end of the table
-    person_sequences_table.append([])
-    person_sequences_table.append(["Full Sequences: Element Frequencies"])
-    person_sequences_table.append(elem_freqs[0])
-    person_sequences_table.append(["First Five Years: Element Frequencies"])
-    person_sequences_table.append(elem_freqs[1])
-    person_sequences_table.append(["First Ten Years: Element Frequencies"])
-    person_sequences_table.append(elem_freqs[2])
+    sequences_log.append([])
+    sequences_log.append(["Full Sequences: Element Frequencies"]), sequences_log.append(elem_freqs[0])
+    sequences_log.append(["First Five Years: Element Frequencies"]), sequences_log.append(elem_freqs[1])
+    sequences_log.append(["First Ten Years: Element Frequencies"]), sequences_log.append(elem_freqs[2])
