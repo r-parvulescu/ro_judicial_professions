@@ -103,15 +103,18 @@ def get_geographic_hierarchical_sequences(person_year_table, right_censor_year, 
                 career_gaps.add(pid)
                 continue
 
-            # get the full sequence, and truncated at five and ten years
+            # get the full sequence, and sequences truncated at ten and five years
             geog_lvl_moves_seq = get_geog_lvl_moves_seq(person, profession)
+            first_ten_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:10])
+            first_five_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:5])
+
+            # add indicator for whether a person began their career at low court (if not, they came extraprofessionally)
             began_at_low_court = 1 if geog_lvl_moves_seq[:2] == "LC" else 0
-            first_ten_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:10]) if len(geog_lvl_moves_seq) > 54 else ''
-            first_five_yrs = '-'.join(geog_lvl_moves_seq.split('-')[:5]) if len(geog_lvl_moves_seq) > 29 else ''
 
-            between_moves = count_between_moves_in_time_interval(geog_lvl_moves_seq)
+            # get metrics on movement between geographic regions
+            reg_mov = moves_between_geog_regs(geog_lvl_moves_seq)
 
-            time_to_tb_promotion, time_to_ac_promotion = time_to_promotion(geog_lvl_moves_seq)
+            time_to_tb_promotion, time_to_ca_promotion = time_to_promotion(geog_lvl_moves_seq)
 
             time_to_retirement = ''
             if entry_yr + len(geog_lvl_moves_seq.split("-")) < right_censor_year:
@@ -121,10 +124,10 @@ def get_geographic_hierarchical_sequences(person_year_table, right_censor_year, 
             frst_geog_mv = next((idx + 1 for idx, mv in enumerate(geog_lvl_moves_seq.split("-")) if mv[-2:] == "MB"),
                                 "")
 
-            person_row = [pid, entry_yr, time_to_retirement, gndr, between_moves["first 6 years"],
-                          between_moves["first 11 years"], between_moves["first 15 years"], began_at_low_court,
-                          time_to_tb_promotion, time_to_ac_promotion, '', '', '', '', frst_geog_mv,
-                          len(geog_lvl_moves_seq.split('-')), geog_lvl_moves_seq, first_five_yrs, first_ten_yrs]
+            person_row = [pid, entry_yr, time_to_retirement, gndr, reg_mov["first 5 years"],
+                          reg_mov["first 10 years"], reg_mov["first 15 years"], began_at_low_court,
+                          time_to_tb_promotion, time_to_ca_promotion, '', '', '', '', frst_geog_mv,
+                          len(geog_lvl_moves_seq.split('-')), geog_lvl_moves_seq, first_ten_yrs, first_five_yrs]
 
             person_sequences_table.append(person_row)
 
@@ -135,8 +138,8 @@ def get_geographic_hierarchical_sequences(person_year_table, right_censor_year, 
     career_star(person_sequences_table)
 
     # write the person-sequence table to disk as a csv
-    header = ["pid", "entry_year", "time_to_retirement", "gender", "region_moves_first_6_yrs",
-              "region_moves_first_11_yrs", "region_moves_first_15_yrs", "began_at_LC", "time_to_tb_prom",
+    header = ["pid", "entry_year", "time_to_retirement", "gender", "region_moves_first_5_yrs",
+              "region_moves_first_10_yrs", "region_moves_first_15_yrs", "began_at_LC", "time_to_tb_prom",
               "time_to_ca_prom", "cohort_avg_time_to_tb_prom", "cohort_avg_time_to_ca_prom", "tb_career_star",
               "ca_career_star", "time_to_first_geog_move", "sequence_career_length", "geog_lvl_moves_sequence",
               "first_ten_yrs_seq", "first_five_yrs_seq"]
@@ -227,7 +230,7 @@ def get_geog_lvl_moves_seq(pers, profession):
     return '-'.join(mov_seq)
 
 
-def count_between_moves_in_time_interval(geog_lvl_moves_seq):
+def moves_between_geog_regs(geog_lvl_moves_seq):
     """
     Report number of geographic moves for sequences of geographic moves - hierarchical levels of different lengths.
      - for sequences 4-6 years/element long, report if there is at least one move
@@ -245,22 +248,22 @@ def count_between_moves_in_time_interval(geog_lvl_moves_seq):
     split_seq = geog_lvl_moves_seq.split('-')
     num_years = len(split_seq)
 
-    moves_in_span = {"first 6 years": [], "first 11 years": [], "first 15 years": []}
+    moves_in_span = {"first 5 years": [], "first 10 years": [], "first 15 years": []}
 
     if 15 <= num_years:
         [moves_in_span["first 15 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 15]
-        [moves_in_span["first 11 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 11]
-        [moves_in_span["first 6 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 6]
+        [moves_in_span["first 10 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 10]
+        [moves_in_span["first 5 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 5]
 
-    elif 11 <= num_years < 15:
+    elif 10 <= num_years < 15:
         moves_in_span["first 15 years"] = ''
-        [moves_in_span["first 11 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 11]
-        [moves_in_span["first 6 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 6]
+        [moves_in_span["first 10 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 10]
+        [moves_in_span["first 5 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 5]
 
-    elif 6 <= num_years < 11:
+    elif 5 <= num_years < 10:
         moves_in_span["first 15 years"] = ''
-        moves_in_span["first 11 years"] = ''
-        [moves_in_span["first 6 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 6]
+        moves_in_span["first 10 years"] = ''
+        [moves_in_span["first 5 years"].append(1) for idx, elem in enumerate(split_seq) if "MB" in elem and idx < 5]
 
     # get the sums of moves per time interval/span
     for span, moves in moves_in_span.items():
