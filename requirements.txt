@@ -23,3 +23,9 @@ xlrd == 1.2.0
 # miscellaneous
 natsort == 7.0.1
 
+# for network metrics
+networkx== 2.5
+python-louvain== 0.14
+
+# for statistics / using R
+rpy2== 3.3.5
