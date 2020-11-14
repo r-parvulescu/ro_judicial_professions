@@ -141,7 +141,7 @@ def hierarchical_mobility(person_year_table, profession):
 
 def career_climbers_table(person_year_table, out_dir, profession, use_cohorts, first_x_years):
     """
-    Make table showing the total number of people from select entry cohorts stayed at low court, reached tribunal,
+    Make table showing the total number of people from select entry cohorts who stayed at low court, reached tribunal,
     appellate court, or even high court level, within a certain time frame. Also gives percent female of this total
     number, per category. Rows are levels in the judicial hierarchy.
 

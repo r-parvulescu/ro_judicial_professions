@@ -143,9 +143,9 @@ def interunit_transfer_network(person_year_table, profession, unit_type, out_dir
 
             # write the directed graph to a GraphML file for drawing in Gephi; I leave this list empty since I pick
             # which years to draw based on the problem and paper at hand
-            years_to_draw = []
-            for yr in years_to_draw:
-                if year == yr:
+            years_to_graphml = []
+            for yr in years_to_graphml:
+                if str(year) == str(yr):
                     nx.write_graphml(digraph, out_dir + str(year) + ".graphml")
 
 
