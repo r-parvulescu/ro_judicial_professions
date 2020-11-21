@@ -39,7 +39,7 @@ def get_geographic_hierarchical_sequences(person_year_table, profession, outdir)
         col 21 = whole career, two-channel sequence of hierarchical - relative region locations (explained below)
         col 22 = reverse order, whole career, two channel sequence (i.e. going from end of career to beginning)
         col 23 = normal order, two-channel sequence, truncated at 10 years
-        col 24 = normal order, two-channel sequence, truncted at five years
+        col 24 = normal order, two-channel sequence, truncated at five years
 
     The hierarchical position code shows where in the judicial hierarchy the person is. The elements are:
     LC = municipal, low court, TB = county tribunal, CA = regional court of appeals, HC = national high court.
@@ -210,9 +210,10 @@ def get_person_measures(pers, profession, right_censor_year):
     rel_reg_seq = [str(rel_reg_dict[pers_yr[ca_col_idx]]) for pers_yr in pers]
 
     # the number of regional moves is simply the number of distinct spells in the relative region sequence
-    num_reg_moves_first_five = len([k for k, g in itertools.groupby(rel_reg_seq[:5])])
-    num_reg_moves_first_ten = len([k for k, g in itertools.groupby(rel_reg_seq[:10])])
-    num_reg_moves_total = len([k for k, g in itertools.groupby(rel_reg_seq)])
+    # need to substract 1 since no moving still generates one entry, hence one group
+    num_reg_moves_first_five = len([k for k, g in itertools.groupby(rel_reg_seq[:5])]) - 1
+    num_reg_moves_first_ten = len([k for k, g in itertools.groupby(rel_reg_seq[:10])]) - 1
+    num_reg_moves_total = len([k for k, g in itertools.groupby(rel_reg_seq)]) - 1
 
     # get times to events
     time_to_ret = len(pers) if pers[-1][yr_col_idx] != right_censor_year else None
