@@ -47,6 +47,36 @@ def get_header(profession, stage):
     return head
 
 
+def sort_pers_yr_table_by_pers_then_yr(person_year_table, profession):
+    """
+    Sorts a person-year table by two keys, in this order: person (by unique ID) and year. Returns the sorted table.
+
+    :param person_year_table: list of lists, a list of person-years (each one a list of values)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :return list of lists, that same person-year table, but now sorted
+    """
+    yr_col_idx = get_header(profession, 'preprocess').index('an')
+    pid_col_idx = get_header(profession, 'preprocess').index('cod persoană')
+    return sorted(person_year_table, key=itemgetter(pid_col_idx, yr_col_idx))
+
+
+def group_table_by_persons(sorted_person_year_table, profession):
+    """
+    Groups a person-year table by the person-level unique IDs, and returns a list of groups, where each group is
+    composed of person-years sharing the same ID;
+
+    NB: does NOT sort the person-year table by ID, assumes this has already been done!
+        (leave as is so I don't accidentally scramble sub-sorts, e.g. by year)
+
+    :param sorted_person_year_table: list of lists, a list of person-years (each one a list of values)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :return list of lists of lists: list of person-groups, each of which is a list of person-years, each of which is a
+            list of values
+    """
+    pid_col_idx = get_header(profession, 'preprocess').index('cod persoană')
+    return [person for k, [*person] in itertools.groupby(sorted_person_year_table, key=itemgetter(pid_col_idx))]
+
+
 def row_to_dict(row, profession, stage):
     """
     Makes a dict by mapping list values to a list of keys, which vary by profession.
@@ -72,16 +102,20 @@ def percent(numerator, denominator):
     return int(round(weird_division(numerator, denominator), 2) * 100)
 
 
-def weird_division(numerator, denominator):
+def weird_division(numerator, denominator, mult_const=False):
     """
     Returns zero if denominator is zero.
     NB: from https://stackoverflow.com/a/27317595/12973664
 
     :param numerator: something divisible, e.g. int or float
     :param denominator: something divisible, e.g. int or float
+    :param mult_const: bool, if True then we return the multiplicative constant, i.e. 1.
     :return: quotient, of type float
     """
-    return float(numerator) / float(denominator) if denominator else 0.
+    quotient = float(numerator) / float(denominator) if denominator else 0.
+    if quotient == 0 and mult_const:
+        quotient = 1
+    return quotient
 
 
 def deduplicate_list_of_lists(list_of_lists):
