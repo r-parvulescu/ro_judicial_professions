@@ -322,50 +322,36 @@ def min_time_promotion(hierarchical_level):
 
 # TRANSITION MATRICES FOR INTER-LEVEL MOBILITY
 
-def inter_level_transition_matrices(person_year_table, profession, out_dir):
+def inter_level_transition_matrices(person_year_table, profession):
     """
 
     NB: ONLY FOR JUDGES AND PROSECUTORS!
 
-    For each year, show a transition probability matrix. If there are are N levels in the organisational hierarchy,
-    then there are N rows and N+4 columns: one extra column for probability of retirement out of that level, another
-    for probability of no movement at all (i.e. stay in your position), another column of the total number of people
-    available to move in that year (this is just the sum of people in that level in year X, and the denominator for
-    the percentages), and one last column to count how many observations we skipped, because said people in that year
-    had discontinuities in their careers (e.g. wsa there 1987-1992, then 1996-2004).
+    For each year, return a dict containing a transition frequency matrix of actor moves. If there are are N levels in
+    the system then there are N rows and N+4 columns: one extra column for frequency of retirement out of that level,
+    another for frequency of no movement at all (i.e. stay in your position), another column of the total number of
+    people available to move in that year (this is just the sum of people in that level in year X, and the denominator
+    for the percentages), and one last column to count how many observations we skipped, because said people in that
+    year had discontinuities in their careers (e.g. was there 1987-1992, then 1996-2004).
 
-    Separately, each year also has a 2xN+2 table, where each column represents the count of entry directly into
-    that level (i.e. recruitment from outside the system) for the first row, and the percent of entrants from the
-    outside vis-a-vis all people in that level THE PREVIOUS YEAR. The last column is shows the sum of all entrants
-    for the year in the first row, and the last column shows how many people were in said level in the previous year.
+    The cells of the NxN submatrix of the transition frequency matrix are read as
+    "# of total transitions from i to j", where "i" is the row index and "j" the column index.
 
-    The cells of the NxN submatrix of the transition probability matrix are read as
-    "% of total transitions from i to j", where "i" is the row index and "j" the column index.
-
-    TRANSITION PROBABILITY MATRIX FOR YEAR X
+    TRANSITION FREQUENCY MATRIX FOR YEAR X
 
                 Level 1     Level 2     Level 3     Retire      Stay Put    Level Sum   Discontinuous
     Level 1
     Level 2
     Level 3
 
-    ENTRY MATRIX FOR YEAR X
-
-                            Level 1     Level 2     Level 3     Level Sum       Total In Level Previous Year
-    Count Entries
-    Percent Entries
-      of Current Level
-
-    This function spits out one .csv per profession, where each CSV contains the transition matrices for all observed
-    years except the left and right censors, since we judge entry and departure based on anterior and posterior year
-    to focal year X.
+    NB: this is what the
 
     NB: lower levels are higher up the hierarchy, so 1 > 2 in terms of hierarchical position
 
     :param person_year_table: a table of person years, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
-    :param out_dir: str, the path to where the transition matrices will live
-    :return: None
+    :return: a nested dict, where top-level keys are years, then you have levels, then you have types of move per level,
+             e.g. retirements, or moves from Lvl1 to Lvl2
     """
 
     # get handy column indexes
@@ -451,6 +437,21 @@ def inter_level_transition_matrices(person_year_table, profession, out_dir):
         retirement_key = str(person[-1][lvl_col_idx]) + '-' + "retire"
         global_trans_dict[retirement_year][retirement_level][retirement_key] += 1
 
+    return global_trans_dict
+
+
+def make_inter_level_hierarchical_transition_matrixes_tables(global_trans_dict, profession, out_dir):
+    """
+    This function spits out two .csv's per profession, where one CSV contains the transition matrices for all observed
+    years except the left and right censors (since we judge entry and departure based on anterior and posterior year
+    to focal year X) and the other shows the transition PROBABILITY matrices for the same years.
+
+    :param global_trans_dict: a nested dict, where top-level keys are years, then you have levels, then you have types
+           of move per level, e.g. retirements, or moves from Lvl1 to Lvl2
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param out_dir: str, the path to where the transition matrices will live
+    :return:
+    """
     with open(out_dir + 'yearly_count_hierarchical_transition_matrices.csv', 'w') as out_ct, \
             open(out_dir + 'yearly_count_hierarchical_probability_transition_matrices.csv', 'w') as out_pb:
 
