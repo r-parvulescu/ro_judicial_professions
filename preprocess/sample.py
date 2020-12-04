@@ -192,8 +192,8 @@ def continuity_sample(person_year_table, time_period, profession):
     There are several points in time in which my datasets become increasingly restricted, e.g. before 2005 I only have
     data on half of the parquets, but after 2005 I have data on all the parquets.
 
-    This functions samples data based on which institutions/units have CONTINUE across a pre-defined time period;
-    period bounds are included. For example, if my whole data i 1990-2010, but my time-period is 1995-2007, keep only
+    This functions samples data based on which institutions/units CONTINUE across a pre-defined time period;
+    period bounds are included. For example, if my whole data is 1990-2010, but my time-period is 1995-2007, keep only
     those units for which we have data for both 1995 and 2007 (on the assumption that we also have data for all the
     years in between).
 
@@ -203,13 +203,13 @@ def continuity_sample(person_year_table, time_period, profession):
     NB: units may appear and disappear over the time-period because
         a) the units were disbanded, e.g. Scorniceşti court
         b) the units were founded, e.g. DIICOT
-        c) I do not have data on those units for the whole period
+        c) I do not have data on those units for the whole period, but that data does exist somewhere
 
     This function only returns data on units that were there throughout the entire period for which we have data.
     It does not distinguish between units with incomplete data due to substantive reasons (i.e. they were founded
     part-way through) as opposed to research reasons (i.e. we couldn't obtain full-period data for that unit).
 
-    NB: as of 03.08.2020 this function is only meant to work with judges and prosecutors; have complete data for the
+    NB: as of 03.08.2020 this function is only meant to work with judges and prosecutors; I have complete data for the
     entire observation periods for the other professions
 
     :param person_year_table: a table, as a list of lists, where year row is a person-period (e.g. a person-month)
