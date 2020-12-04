@@ -77,6 +77,22 @@ def group_table_by_persons(sorted_person_year_table, profession):
     return [person for k, [*person] in itertools.groupby(sorted_person_year_table, key=itemgetter(pid_col_idx))]
 
 
+def get_workplace_code(person_year, profession):
+    """
+    Given a person-year, returns the unique, three-area code of any given workplace in the Romanian judicial hierarchy.
+
+    NB: works only for judges and prosecutors!
+
+    :param person_year: a list of values
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
+    :return: str, a three-area code of the form "CA-TB-JUD"
+    """
+    ca_idx = get_header(profession, 'preprocess').index('ca cod')
+    trib_idx = get_header(profession, 'preprocess').index('trib cod')
+    jud_idx = get_header(profession, 'preprocess').index('jud cod')
+    return "-".join([person_year[ca_idx], person_year[trib_idx], person_year[jud_idx]])
+
+
 def row_to_dict(row, profession, stage):
     """
     Makes a dict by mapping list values to a list of keys, which vary by profession.
