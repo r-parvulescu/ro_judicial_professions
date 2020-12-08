@@ -1,9 +1,13 @@
 import csv
 import itertools
 import statistics
+import numpy as np
 from operator import itemgetter
-from helpers import helpers
 from copy import deepcopy
+from helpers import helpers
+from preprocess import sample
+from describe import totals_in_out
+from describe.mobility import area_samples
 
 
 # AGGREGATE DESCRIPTORS OF HIERARCHICAL MOBILITY
@@ -322,9 +326,44 @@ def min_time_promotion(hierarchical_level):
 
 # TRANSITION MATRICES FOR INTER-LEVEL MOBILITY
 
+
+def make_inter_level_hierarchical_transition_matrixes_tables(person_year_table, profession, out_dir):
+    """
+    This function spits out two .csv's per profession, where one CSV contains the transition matrices for all observed
+    years except the left and right censors (since we judge entry and departure based on anterior and posterior year
+    to focal year X) and the other shows the transition PROBABILITY matrices for the same years.
+
+    :param person_year_table: a table of person years, as a list of lists
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    :param out_dir: str, the path to where the transition matrices will live
+    :return: None
+    """
+    global_trans_dict = inter_level_transition_matrices(person_year_table, profession)
+
+    with open(out_dir + 'yearly_count_hierarchical_transition_matrices.csv', 'w') as out_ct, \
+            open(out_dir + 'yearly_count_hierarchical_probability_transition_matrices.csv', 'w') as out_pb:
+
+        count_writer, prob_writer = csv.writer(out_ct), csv.writer(out_pb)
+        count_writer.writerow([profession]), count_writer.writerow([]),
+        prob_writer.writerow([profession]), prob_writer.writerow([]),
+
+        for yr in global_trans_dict:
+            count_writer.writerow([yr]), prob_writer.writerow([yr])
+
+            for lvl in global_trans_dict[yr]:
+                count_row = [str(key) + ' : ' + str(value) for key, value in global_trans_dict[yr][lvl].items()]
+                count_writer.writerow(count_row)
+
+                level_sum_key = str(lvl) + '-' + "level_sum"
+                level_sum = global_trans_dict[yr][lvl][level_sum_key]
+                prob_row = [str(key) + ' : ' + str(round(helpers.weird_division(value, level_sum), 4))
+                            for key, value in global_trans_dict[yr][lvl].items()]
+                prob_writer.writerow(prob_row)
+            count_writer.writerow([]), prob_writer.writerow([])
+
+
 def inter_level_transition_matrices(person_year_table, profession):
     """
-
     NB: ONLY FOR JUDGES AND PROSECUTORS!
 
     For each year, return a dict containing a transition frequency matrix of actor moves. If there are are N levels in
@@ -440,36 +479,150 @@ def inter_level_transition_matrices(person_year_table, profession):
     return global_trans_dict
 
 
-def make_inter_level_hierarchical_transition_matrixes_tables(person_year_table, profession, out_dir):
+def make_vacancy_transition_tables(person_year_table, profession, out_dir, years, averaging_years=None, area_samp=False,
+                                   out_dir_area_samp=None):
     """
-    This function spits out two .csv's per profession, where one CSV contains the transition matrices for all observed
-    years except the left and right censors (since we judge entry and departure based on anterior and posterior year
-    to focal year X) and the other shows the transition PROBABILITY matrices for the same years.
+    Make a csv containing one sub-table for each of the years that we select, with each sub-table showing the transition
+    probabilites between hiearchical levels of vacancies. Optionally, we may also include a table that averages across
+    desired years. e.g. 1984-1989.
 
-    :param person_year_table: a table of person years, as a list of lists
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori".
+    Each sub-table should be NxN+1, where N = number of levels, and the last column represents vacancies leaving the
+    system, i.e. people being recruited into the system.
+
+    NB: diagonals signify mobility WITHIN the level
+
+    :param person_year_table: list of lists, a list of person-years (each one a list of values)
+    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
     :param out_dir: str, the path to where the transition matrices will live
+    :param years: list of ints, the years for which we want vacancy probability transition matrixes
+    :param averaging_years: list of ints over which we want to average vacancy frequency tables, e.g. [1985, 1986, 1987]
+    :param area_samp: bool,True if we want to sample from specific areas
+    :param out_dir_area_samp: if given, str showing the out-directory where we want the vacancy transition tables for
+                              the sample areas to live
     :return: None
     """
-    global_trans_dict = inter_level_transition_matrices(person_year_table, profession)
+    averaging_years = averaging_years if averaging_years else []  # if no averaging years provided, make empty list
+    sorted_person_year_table = helpers.sort_pers_yr_table_by_pers_then_yr(person_year_table, profession)
 
-    with open(out_dir + 'yearly_count_hierarchical_transition_matrices.csv', 'w') as out_ct, \
-            open(out_dir + 'yearly_count_hierarchical_probability_transition_matrices.csv', 'w') as out_pb:
+    proms_weights, demos_weights, transfs_weights = None, None, None  # throws up errors if things go awry
 
-        count_writer, prob_writer = csv.writer(out_ct), csv.writer(out_pb)
-        count_writer.writerow([profession]), count_writer.writerow([]),
-        prob_writer.writerow([profession]), prob_writer.writerow([]),
+    # get entry counts, in easy format
+    entry_counts = totals_in_out.pop_cohort_counts(sorted_person_year_table, years[0], years[-1], profession,
+                                                   cohorts=True, unit_type="nivel", entry=True)
+    entry_counts.pop("grand_total")  # don't need the grand total
+    for lvl in entry_counts:
+        for yr in entry_counts[lvl]:
+            entry_counts[lvl][yr] = entry_counts[lvl][yr]["total_size"]
 
-        for yr in global_trans_dict:
-            count_writer.writerow([yr]), prob_writer.writerow([yr])
+    if area_samp:
+        # I hard code these in since they change so rarely
+        samp_areas = {"judges": ["CA1", "CA7", "CA9", "CA12", "-88"], "prosecutors": []}
+        samp_yr_range = {"judges": [1980, 2003], "prosecutors": []}
+        samp_yrs, samp_as = samp_yr_range[profession], samp_areas[profession]
 
-            for lvl in global_trans_dict[yr]:
-                count_row = [str(key) + ' : ' + str(value) for key, value in global_trans_dict[yr][lvl].items()]
-                count_writer.writerow(count_row)
+        # get sample-adjusted entry counts and sample weights for mobility
+        entry_counts = area_samples.adjusted_entry_counts(person_year_table, profession)
+        proms_weights = area_samples.adjusted_promotion_counts(sorted_person_year_table, profession, weights=True)
+        demos_weights = area_samples.adjusted_demotion_counts(sorted_person_year_table, profession, weights=True)
+        transfs_weights = area_samples.adjusted_lateral_transfer_counts(sorted_person_year_table, profession,
+                                                                        weights=True)
+        # restrict person-year table to sampling areas
+        sorted_person_year_table = sample.appellate_area_sample(sorted_person_year_table, profession, samp_as)
+        # redirect the out-directory
+        out_dir = out_dir_area_samp
 
-                level_sum_key = str(lvl) + '-' + "level_sum"
-                level_sum = global_trans_dict[yr][lvl][level_sum_key]
-                prob_row = [str(key) + ' : ' + str(round(helpers.weird_division(value, level_sum), 4))
-                            for key, value in global_trans_dict[yr][lvl].items()]
-                prob_writer.writerow(prob_row)
-            count_writer.writerow([]), prob_writer.writerow([])
+    # get person-level transition frequencies levels
+    trans_freqs = inter_level_transition_matrices(sorted_person_year_table, profession)
+
+    with open(out_dir + "vacancy_probability_transition_matrixes.csv", "w") as out_f:
+        writer = csv.writer(out_f)
+
+        # this is unused if averaging years stays empty
+        avg_vac_trans_mat = np.empty((4, 5), float)
+
+        # for each sampling year
+        for yr in years:
+
+            # make array of zeros, for four levels; not all years have four levels, but zero rows/columns are harmless
+            trans_mat = np.zeros((4, 4))
+
+            for lvl in range(1, 5):  # for departure levels in the system, i.e. the level FROM which mobility happens
+                if lvl in trans_freqs[yr]:  # if the levels exist in that year (since some are added later)
+
+                    # now weigh the observed values
+                    # NB: route = mobility route, e.g. "1-2" means "mobility from level 1 to level 2"
+                    for route, mob_freq in trans_freqs[yr][lvl].items():
+
+                        # ignore retirements, non-movements, sums, and discontinuities
+                        if route.split("-")[1].isdigit():
+
+                            # level you leave and level you go to; -1 since numpy zero indexes
+                            departing, arriving = int(route.split("-")[0]) - 1, int(route.split("-")[1]) - 1
+
+                            # get frequency counts and put them in the frequency matrix; if sampling, weigh the counts
+                            if departing < arriving:  # promotions
+                                trans_mat[departing][arriving] = mob_freq
+                                if area_samp:
+                                    trans_mat[departing][arriving] = round(mob_freq * proms_weights[lvl], 5)
+
+                            if departing == arriving:  # lateral transfers
+                                trans_mat[departing][arriving] = mob_freq
+                                if area_samp:
+                                    trans_mat[departing][arriving] = round(mob_freq * transfs_weights[lvl], 5)
+
+                            if departing > arriving:  # demotions
+                                trans_mat[departing][arriving] = mob_freq
+                                if area_samp:
+                                    trans_mat[departing][arriving] = round(mob_freq * demos_weights[lvl], 5)
+
+            # transpose the person-level mobility frequency matrix to get the vacancy mobility matrix
+            vac_trans_mat = np.transpose(trans_mat)
+
+            # by convention, we thus far treated levels in incrementing order, i.e. level 1 < 2 < 3 < 4. The convention
+            # in vacancy chains studies is that 1 > 2 > 3 > 4, and to get that we transpose the array along the
+            # anti-diagonal/off-diagonal
+            vac_trans_mat = vac_trans_mat[::-1, ::-1].T
+
+            # in the last column we put vacancy "retirements", i.e. entries of people into the system
+
+            entry_freqs = [entry_counts[str(level)][yr] for level in range(1, 5) if str(level) in entry_counts]
+            entries_col = np.asarray(entry_freqs[::-1])[..., None]  # give it Nx1 shape; reverse order for 1 > 2 > 3...
+            vac_trans_mat = np.append(vac_trans_mat, entries_col, 1)
+
+            if yr in averaging_years:
+                avg_vac_trans_mat = np.add(avg_vac_trans_mat, vac_trans_mat)
+
+            vac_prob_mat = freq_mat_to_prob_mat(vac_trans_mat.tolist(), round_to=5)
+            # add that transition probability matrix to table
+            writer.writerow([profession.upper(), yr])
+            header = ["", "Level 1", "Level 2", "Level 3", "Level 4", "Recruits"]
+            writer.writerow(header)
+            for i in range(len(vac_prob_mat)):
+                writer.writerow([header[1:][i]] + vac_prob_mat[i])
+            writer.writerow(["\n"])
+
+        if averaging_years:
+            avg_vac_trans_mat = np.divide(avg_vac_trans_mat, float(len(averaging_years) - 1))
+            avg_vac_prob_mat = freq_mat_to_prob_mat(avg_vac_trans_mat.tolist(), round_to=5)
+            writer.writerow(["AVERAGED ACROSS YEARS"] + averaging_years)
+            header = ["", "Level 1", "Level 2", "Level 3", "Level 4", "Recruits"]
+            writer.writerow(header)
+            for i in range(len(avg_vac_prob_mat)):
+                writer.writerow([header[1:][i]] + avg_vac_prob_mat[i])
+
+
+def freq_mat_to_prob_mat(frequency_matrix, round_to=15):
+    """
+    Take a matrix of frequencies and turn it into a probability matrix, where each cell is divided by its row sum.
+    NB: leaves zero rows as they are are
+
+    :param frequency_matrix: list of lists, e.g. [[1,2,], [3,4]]
+    :param round_to: int, to how many decimals we want to round; default is fifteen
+    :return list of lists, where rows sum to 1, e.g. [[0.25, 0.75], [0.9, 0.1]]
+    """
+    probability_matrix = []
+    for i in range(len(frequency_matrix)):
+        row_sum = sum(frequency_matrix[i])
+        prob_row = [round(helpers.weird_division(round(cell, 5), row_sum), round_to) for cell in frequency_matrix[i]]
+        probability_matrix.append(prob_row)
+    return probability_matrix
