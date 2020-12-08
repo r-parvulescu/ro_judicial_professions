@@ -4,22 +4,16 @@ Functions for creating descriptive tables and graphs.
 
 import csv
 from describe import totals_in_out, inheritance
-from describe.mobility import geographic, hierarchical, sequences
+from describe.mobility import geographic, hierarchical, sequences, area_samples
 from helpers import helpers
-from preprocess import sample
 
 
-def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out_dir_mob, out_dir_inher,
-             profession, start_year, end_year, unit_type=None):
+def describe(pop_in_file_path, out_dirs, profession, start_year, end_year, unit_type=None):
     """
-    Generate tables of basic descriptives , and write them to disk.
+    Generate tables of basic descriptives and write them to disk.
 
     :param pop_in_file_path: path to the population-level data file
-    :param sampling_scheme: str, what kind of sample we want from the population-level base data
-    :param out_dir_tot: string, directory where the descriptive files on total counts will live
-    :param out_dir_mob: string, directory where the descriptive files on mobility will live
-    :param out_dir_inher: string, directory where the descriptive files on inheritance will live
-    :param out_dir_in_out: string, directory where the descriptive files on entries and exits will live
+    :param out_dirs: dict, containing the paths to the directories in which we dump different data tables
     :param start_year: first year we're considering
     :param end_year: last year we're considering
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
@@ -29,63 +23,85 @@ def describe(pop_in_file_path, sampling_scheme, out_dir_tot, out_dir_in_out, out
     :return: None
     """
 
-    print(sampling_scheme)
+    # get destination directories relevant to all professions
+    out_dir_tot, out_dir_in_out = out_dirs["totals"], out_dirs["entry_exit"]
 
-    table = sample.get_sample_type(pop_in_file_path, sampling_scheme, profession)
+    with open(pop_in_file_path, 'r') as in_f:  # load the table
+        py_table = list(csv.reader(in_f))[1:]  # skip the header
 
     # make table of total counts per year
-    year_counts_table(table, start_year, end_year, profession, out_dir_tot)
+    year_counts_table(py_table, start_year, end_year, profession, out_dir_tot)
 
     # make tables for entry and exit cohorts, per year per gender
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=True)
-    entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=False)
+    entry_exit_gender(py_table, start_year, end_year, profession, out_dir_in_out, entry=True)
+    entry_exit_gender(py_table, start_year, end_year, profession, out_dir_in_out, entry=False)
 
     # for prosecutors and judges only
-    if profession == 'prosecutors' or profession == 'judges':
+    if profession in {"judges", "prosecutors"}:
+
+        # get destination directories relevant to judges and prosecutors
+        out_dir_mob, out_dir_cont = out_dirs["mobility"], out_dirs["cont_samp"]
+
+        # make the table of estimated population measures based using an area continuity sample, pre-2004
+        area_samples.make_area_sample_measures_table(py_table, profession, out_dir_cont)
 
         # make tables of total counts per year, per level in judicial hierarchy
-        year_counts_table(table, start_year, end_year, profession, out_dir_tot, unit_type='nivel')
+        year_counts_table(py_table, start_year, end_year, profession, out_dir_tot, unit_type='nivel')
 
         # make tables of total counts per year, per appellate region
-        year_counts_table(table, start_year, end_year, profession, out_dir_tot, unit_type='ca cod')
+        year_counts_table(py_table, start_year, end_year, profession, out_dir_tot, unit_type='ca cod')
 
         # make tables for entry and exit cohorts, per year, per gender, per level in judicial hierarchy
-        entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=False, unit_type='nivel')
-        entry_exit_gender(table, start_year, end_year, profession, out_dir_in_out, entry=True, unit_type='nivel')
+        entry_exit_gender(py_table, start_year, end_year, profession, out_dir_in_out, entry=False, unit_type='nivel')
+        entry_exit_gender(py_table, start_year, end_year, profession, out_dir_in_out, entry=True, unit_type='nivel')
 
         for u_t in unit_type:
             # make tables for entry and exit cohorts, per year per unit type (no gender)
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
-            entry_exit_unit_table(table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
+            entry_exit_unit_table(py_table, start_year, end_year, profession, u_t, out_dir_in_out, entry=True)
+            entry_exit_unit_table(py_table, start_year, end_year, profession, u_t, out_dir_in_out, entry=False)
+
+        # get the yearly percentage of people who joined the system before 1990
+        totals_in_out.make_percent_pre_1990_table(py_table, profession, out_dir_tot)
+        totals_in_out.make_percent_pre_1990_table(py_table, profession, out_dir_tot, out_dir_area_samp=out_dir_cont,
+                                                  area_sample=True)
 
         # make tables summarising yearly inter-appellate transfer networks
-        geographic.interunit_transfer_network(table, profession, "ca cod", out_dir_mob)
+        geographic.interunit_transfer_network(py_table, profession, "ca cod", out_dir_mob)
 
         # make tables of raw of inter-appellate transfers
-        geographic.inter_unit_mobility_table(table, out_dir_mob, profession, "ca cod")
+        geographic.inter_unit_mobility_table(py_table, out_dir_mob, profession, "ca cod")
 
         # make table for hierarchical mobility (total and by gender) and for career climbers
-        hierarchical.hierarchical_mobility_table(table, out_dir_mob, profession)
-        hierarchical.career_climbers_table(table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
+        hierarchical.hierarchical_mobility_table(py_table, out_dir_mob, profession)
+        hierarchical.career_climbers_table(py_table, out_dir_mob, profession, use_cohorts=[2006, 2007, 2008, 2009],
                                            first_x_years=10)
 
         # make yearly tables of personal mobility transition probabilities between hierarchical levels
-        hierarchical.inter_level_transition_matrices(table, profession, out_dir_mob)
+        hierarchical.make_inter_level_hierarchical_transition_matrixes_tables(py_table, profession, out_dir_mob)
+
+        # make vacancy transition table for post-2005 population, with an average table for the whole period
+        hierarchical.make_vacancy_transition_tables(py_table, profession, out_dir_mob, [i for i in range(2006, 2020)],
+                                                    averaging_years=[i for i in range(2006, 2020)])
+        # and make vacancy transition tables for 1981-2003 area sample, with an average table over select years
+        hierarchical.make_vacancy_transition_tables(py_table, profession, out_dir_mob, [i for i in range(1981, 2004)],
+                                                    area_samp=True, out_dir_area_samp=out_dir_cont,
+                                                    averaging_years=[1981, 1982, 1983, 1984, 1985, 1987, 1988])
 
         # make table of sequences combining hierarchical position and geographic movement across appellate region
-        sequences.get_geographic_hierarchical_sequences(table, profession, out_dir_mob)
-
+        sequences.get_geographic_hierarchical_sequences(py_table, profession, out_dir_mob)
+     
     # make tables for professional inheritance, for notaries and executori only
     # different professions have different sizes and structures, so different name rank and year window parameters
     if profession in {"notaries", "executori"}:
+        out_dir_inher = out_dirs["inheritance"]
         prof_name_ranks = {'executori': (2, 5, 6, 0), 'notaries': (3, 7, 14, 15, 0)}
-        prof_year_windows = {'executori': 1000, 'notaries': 1000}
+        prof_yr_windows = {'executori': 1000, 'notaries': 1000}
 
         for num_top_names in prof_name_ranks[profession]:
             # one run with, one run without robustness check
-            inheritance.prof_inherit_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
+            inheritance.prof_inherit_table(out_dir_inher, py_table, profession, year_window=prof_yr_windows[profession],
                                            num_top_names=num_top_names, multi_name_robustness=False)
-            inheritance.prof_inherit_table(out_dir_inher, table, profession, year_window=prof_year_windows[profession],
+            inheritance.prof_inherit_table(out_dir_inher, py_table, profession, year_window=prof_yr_windows[profession],
                                            num_top_names=num_top_names, multi_name_robustness=True)
 
 
