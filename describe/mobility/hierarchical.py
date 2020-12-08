@@ -440,18 +440,19 @@ def inter_level_transition_matrices(person_year_table, profession):
     return global_trans_dict
 
 
-def make_inter_level_hierarchical_transition_matrixes_tables(global_trans_dict, profession, out_dir):
+def make_inter_level_hierarchical_transition_matrixes_tables(person_year_table, profession, out_dir):
     """
     This function spits out two .csv's per profession, where one CSV contains the transition matrices for all observed
     years except the left and right censors (since we judge entry and departure based on anterior and posterior year
     to focal year X) and the other shows the transition PROBABILITY matrices for the same years.
 
-    :param global_trans_dict: a nested dict, where top-level keys are years, then you have levels, then you have types
-           of move per level, e.g. retirements, or moves from Lvl1 to Lvl2
+    :param person_year_table: a table of person years, as a list of lists
     :param profession: string, "judges", "prosecutors", "notaries" or "executori".
     :param out_dir: str, the path to where the transition matrices will live
-    :return:
+    :return: None
     """
+    global_trans_dict = inter_level_transition_matrices(person_year_table, profession)
+
     with open(out_dir + 'yearly_count_hierarchical_transition_matrices.csv', 'w') as out_ct, \
             open(out_dir + 'yearly_count_hierarchical_probability_transition_matrices.csv', 'w') as out_pb:
 
