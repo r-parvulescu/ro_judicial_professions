@@ -58,7 +58,7 @@ samp_areas = {"judges": ["CA1", "CA7", "CA9", "CA12", "-88"],
               "prosecutors": []}
 
 
-def make_area_samples_measures_table(person_year_table, profession, out_dir):
+def make_area_sample_measures_table(person_year_table, profession, out_dir):
     """
     Save to disk one big table with all the estimated size of the population, yearly percent change in that size, and
     all the estimated mobility types for the sampled years.
