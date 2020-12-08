@@ -35,7 +35,6 @@ NB: for judges and prosecutors only!
 """
 
 import csv
-import numpy as np
 from helpers import helpers
 from helpers.helpers import get_workplace_code
 from preprocess import sample
@@ -59,7 +58,7 @@ samp_areas = {"judges": ["CA1", "CA7", "CA9", "CA12", "-88"],
               "prosecutors": []}
 
 
-def make_continuity_sample_measures_table(person_year_table, profession, out_dir):
+def make_area_samples_measures_table(person_year_table, profession, out_dir):
     """
     Save to disk one big table with all the estimated size of the population, yearly percent change in that size, and
     all the estimated mobility types for the sampled years.
@@ -586,121 +585,3 @@ def estimated_population_size(person_year_table, profession):
     for yr in range(samp_yrs[0], samp_yrs[1] + 1):
         estim_pop.update({yr: round(float(samp_size["grand_total"][yr]["total_size"] * pop_inflation_ratio), 4)})
     return estim_pop
-
-
-def make_vacancy_transition_tables(person_year_table, profession, out_dir, averaging_years=None):
-    """
-    Make a table of vacancy transition probabilities between the hierarchical levels for each year of our contiuinity
-    sample, and then also report one table whose cells are averages of cells across the specified years, e.g. 1984-1989.
-    The table should be NxN+1, where N = number of levels, and the last column represents vacancies leaving the system,
-    i.e. people being recruited into the system.
-
-    NB: diagonals signify mobility WITHIN the level
-
-    :param person_year_table: list of lists, a list of person-years (each one a list of values)
-    :param profession: string, "judges", "prosecutors", "notaries" or "executori"
-    :param out_dir: str, the path to where the transition matrices will live
-    :param averaging_years: list of ints over which we want to average vacancy frequency tables, e.g. [1985, 1986, 1987]
-    :return: None
-    """
-
-    averaging_years = averaging_years if averaging_years else []  # if no averaging years provided, make empty list
-
-    samp_yrs, samp_as = samp_yr_range[profession], samp_areas[profession]
-
-    # sort the population table by person and year then sample from it by area, then get a continuity area sample
-    sorted_person_year_table = helpers.sort_pers_yr_table_by_pers_then_yr(person_year_table, profession)
-    cas_sample_table = sample.appellate_area_sample(sorted_person_year_table, profession, samp_as)
-
-    # get sample weights for in-system mobility
-    entry_counts = adjusted_entry_counts(person_year_table, profession)
-    proms_weights = adjusted_promotion_counts(sorted_person_year_table, profession, weights=True)
-    demos_weights = adjusted_demotion_counts(sorted_person_year_table, profession, weights=True)
-    transfs_weights = adjusted_lateral_transfer_counts(sorted_person_year_table, profession, weights=True)
-
-    # get person-level transition frequencies between distinct levels, for the continuity area sample
-    trans_freqs = hierarchical.inter_level_transition_matrices(cas_sample_table, profession)
-
-    with open(out_dir + "area_continuity_sample_vacancy_prob_transition_matrixes.csv", "w") as out_f:
-        writer = csv.writer(out_f)
-
-        # this is unused if averaging years stays empty
-        avg_vac_trans_mat = np.empty((4, 5), float)
-
-        # for each sampling year
-        for yr in range(samp_yrs[0], samp_yrs[1] + 1):
-
-            # make array of zeros, for four levels; not all years have four levels, but zero rows/columns are harmless
-            trans_mat = np.zeros((4, 4))
-
-            for lvl in range(1, 5):  # for departure levels in the system, i.e. the level FROM which mobility happens
-                if lvl in trans_freqs[yr]:  # if the levels exist in that year (since some are added later)
-
-                    # now weigh the observed values
-                    # NB: route = mobility route, e.g. "1-2" means "mobility from level 1 to level 2"
-                    for route, mob_freq in trans_freqs[yr][lvl].items():
-
-                        # ignore retirements, non-movements, sums, and discontinuities
-                        if route.split("-")[1].isdigit():
-
-                            # level you leave and level you go to; -1 since numpy zero indexes
-                            departing, arriving = int(route.split("-")[0]) - 1, int(route.split("-")[1]) - 1
-
-                            # weight mobility frequency counts and put them in the frequency matrix
-                            if departing < arriving:  # promotions
-                                trans_mat[departing][arriving] = round(mob_freq * proms_weights[lvl], 5)
-                            if departing == arriving:  # lateral transfers
-                                trans_mat[departing][arriving] = round(mob_freq * transfs_weights[lvl], 5)
-                            if departing > arriving:  # demotions
-                                trans_mat[departing][arriving] = round(mob_freq * demos_weights[lvl], 5)
-
-            # transpose the person-level mobility frequency matrix to get the vacancy mobility matrix
-            vac_trans_mat = np.transpose(trans_mat)
-
-            # by convention, we thus far treated levels in incrementing order, i.e. level 1 < 2 < 3 < 4. The convention
-            # in vacancy chains studies is that 1 > 2 > 3 > 4, and to get that we transpose the array along the
-            # anti-diagonal/off-diagonal
-            vac_trans_mat = vac_trans_mat[::-1, ::-1].T
-
-            # in the last column we put vacancy "retirements", i.e. entries of people into the system
-            entry_freqs = [entry_counts[str(level)][yr] for level in range(1, 5) if str(level) in entry_counts]
-            entries_col = np.asarray(entry_freqs[::-1])[..., None]  # give it Nx1 shape; reverse order for 1 > 2 > 3...
-            vac_trans_mat = np.append(vac_trans_mat, entries_col, 1)
-
-            if yr in averaging_years:
-                avg_vac_trans_mat = np.add(avg_vac_trans_mat, vac_trans_mat)
-
-            vac_prob_mat = freq_mat_to_prob_mat(vac_trans_mat.tolist(), round_to=5)
-            # add that transition probability matrix to table
-            writer.writerow([profession.upper(), yr])
-            header = ["", "Level 1", "Level 2", "Level 3", "Level 4", "Recruits"]
-            writer.writerow(header)
-            for i in range(len(vac_prob_mat)):
-                writer.writerow([header[1:][i]] + vac_prob_mat[i])
-            writer.writerow(["\n"])
-
-        if averaging_years:
-            avg_vac_trans_mat = np.divide(avg_vac_trans_mat, float(len(averaging_years) - 1))
-            avg_vac_prob_mat = freq_mat_to_prob_mat(avg_vac_trans_mat.tolist(), round_to=5)
-            writer.writerow(["AVERAGED ACROSS YEARS", averaging_years])
-            header = ["", "Level 1", "Level 2", "Level 3", "Level 4", "Recruits"]
-            writer.writerow(header)
-            for i in range(len(avg_vac_prob_mat)):
-                writer.writerow([header[1:][i]] + avg_vac_prob_mat[i])
-
-
-def freq_mat_to_prob_mat(frequency_matrix, round_to=15):
-    """
-    Take a matrix of frequencies and turn it into a probability matrix, where each cell is divided by its row sum.
-    NB: leaves zero rows as they are are
-
-    :param frequency_matrix: list of lists, e.g. [[1,2,], [3,4]]
-    :param round_to: int, to how many decimals we want to round; default is fifteen
-    :return list of lists, where rows sum to 1, e.g. [[0.25, 0.75], [0.9, 0.1]]
-    """
-    probability_matrix = []
-    for i in range(len(frequency_matrix)):
-        row_sum = sum(frequency_matrix[i])
-        prob_row = [round(helpers.weird_division(round(cell, 5), row_sum), round_to) for cell in frequency_matrix[i]]
-        probability_matrix.append(prob_row)
-    return probability_matrix
