@@ -4,7 +4,7 @@
 
 # core utilities
 numpy == 1.18.3
-scipy == 1.4.1
+scipy == 1.10.0
 pandas == 1.0.3
 matplotlib == 3.2.1
 
